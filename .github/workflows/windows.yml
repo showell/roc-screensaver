@@ -1,5 +1,6 @@
-# Build the Windows screensaver on a hosted Windows runner, run it headless,
-# and upload screensaver.exe and screensaver.scr as one artifact. Run by hand:
+# Build every screensaver in screensavers/list.txt on a hosted Windows runner,
+# run each headless, and upload each one's <name>.exe and <name>.scr together
+# as one artifact. Run by hand:
 #
 #   gh workflow run windows.yml
 #   gh run download <run-id> -n windows-screensaver
@@ -39,25 +40,39 @@ jobs:
           version: nightly-new-compiler
           nightly-tag: ${{ steps.pin.outputs.roc }}
 
+      # Each line of screensavers/list.txt that is not a comment starts with a
+      # screensaver's folder and its checksum.
       - name: Build
-        run: zig build -Dwindows --summary all
+        run: |
+          grep -v '^#' screensavers/list.txt | while read -r name checksum rest; do
+            [ -n "$name" ] || continue
+            zig build -Dwindows -Dapp=screensavers/$name/main.roc --summary all
+          done
 
-      # No window: the .exe draws the PNG harness's frames through its raster
+      # No window: each .exe draws the PNG harness's frames through its raster
       # workers and prints the last one's checksum, so this proves it links,
       # loads and draws, and draws what the PNG harness draws on Linux: the
-      # checksum is tools/verify.shale's `last_checksum`, moved with it. The
-      # build is the shipped one, ReleaseFast (build.zig's default for
-      # -Dwindows).
-      - name: Run it headless
+      # checksum is the one screensavers/list.txt holds for it, which
+      # tools/verify.shale holds the harness to. The build is the shipped one,
+      # ReleaseFast (build.zig's default for -Dwindows).
+      - name: Run them headless
         run: |
-          zig build -Dwindows headless 2>&1 | tee headless.txt
-          grep -q "checksum a153a4366764142f$" headless.txt
+          set -o pipefail
+          ran=0
+          while read -r name checksum rest; do
+            [ -n "$name" ] || continue
+            zig build -Dwindows -Dapp=screensavers/$name/main.roc headless 2>&1 | tee headless-$name.txt
+            grep -q "checksum $checksum\$" headless-$name.txt || { echo "$name: not checksum $checksum"; exit 1; }
+            ran=$((ran + 1))
+          done < <(grep -v '^#' screensavers/list.txt)
+          echo "headless: $ran screensavers drew their checksums"
+          [ "$ran" -gt 0 ]
 
       - name: Upload the screensaver
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-screensaver
           path: |
-            zig-out/bin/screensaver.exe
-            zig-out/bin/screensaver.scr
+            zig-out/bin/*.exe
+            zig-out/bin/*.scr
           if-no-files-found: error

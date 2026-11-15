@@ -25,8 +25,9 @@ const std = @import("std");
 /// `-Dwindows` builds the Windows screensaver instead (host/win32.zig, on
 /// Roc's x64win archive), from any host:
 ///
-///   zig build -Dwindows            zig-out/bin/screensaver.exe and a
-///                                  byte-identical screensaver.scr, built
+///   zig build -Dwindows            zig-out/bin/<name>.exe and a
+///                                  byte-identical <name>.scr, the name the
+///                                  app's folder's (lanterns.exe), built
 ///                                  ReleaseFast unless -Doptimize says else
 ///   zig build -Dwindows headless   runs the .exe with no window, where the
 ///                                  host runs Windows programs
@@ -40,7 +41,9 @@ pub fn build(b: *std.Build) void {
         // times slower, so it is optimized unless -Doptimize says otherwise.
         const optimize = b.option(std.lang.Optimize, "optimize", "Prioritize performance, safety, or binary size (ReleaseFast unless named)") orelse .fast;
         const win_target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu });
-        buildWindows(b, rocArchive(b, roc, app_root, "x64win", "app-x64win.lib"), win_target, optimize);
+        // Each screensaver is named for its folder, so several share zig-out/bin.
+        const name = std.fs.path.basename(std.fs.path.dirname(app_root) orelse ".");
+        buildWindows(b, name, rocArchive(b, roc, app_root, "x64win", "app-x64win.lib"), win_target, optimize);
         return;
     }
 
@@ -101,15 +104,15 @@ fn rocArchive(b: *std.Build, roc: []const u8, app_root: []const u8, roc_target: 
 /// bytes serve both because Windows picks the mode by the command line
 /// (host/win32.zig). It needs no SDK: zig's own import libraries cover
 /// user32, gdi32 and kernel32.
-fn buildWindows(b: *std.Build, app: std.Build.LazyPath, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) void {
-    const exe = withApp(b, "screensaver", "host/win32.zig", app, target, optimize);
+fn buildWindows(b: *std.Build, name: []const u8, app: std.Build.LazyPath, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) void {
+    const exe = withApp(b, name, "host/win32.zig", app, target, optimize);
     exe.subsystem = .windows;
     // No pkg-config: the import libraries are zig's, and on the Windows
     // runner a pkg-config from Strawberry Perl answers with errors.
     exe.root_module.linkSystemLibrary("user32", .{ .use_pkg_config = .no });
     exe.root_module.linkSystemLibrary("gdi32", .{ .use_pkg_config = .no });
     b.installArtifact(exe);
-    b.getInstallStep().dependOn(&b.addInstallFileWithDir(exe.getEmittedBin(), .bin, "screensaver.scr").step);
+    b.getInstallStep().dependOn(&b.addInstallFileWithDir(exe.getEmittedBin(), .bin, b.fmt("{s}.scr", .{name})).step);
 
     const run = b.addRunArtifact(exe);
     run.addArg(b.fmt("--headless={d}", .{headless_frames}));

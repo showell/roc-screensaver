@@ -1,0 +1,28 @@
+-- roc-screensaver's prelude: what every script at the repo's root shares.
+
+-- The screensavers in screensavers/list.txt, in its order, each as
+-- {name, checksum, roc_tests, web_tests, help}. A line that is not a comment,
+-- blank, or of that shape stops the run, naming it, so a typo never drops a
+-- screensaver from a check.
+function screensavers_listed()
+  local listed = {}
+  for l in lines(read("screensavers/list.txt")) do
+    local text = trim(l)
+    if text ~= "" and not starts_with(text, "#") then
+      local m = re_find(text, "^([a-z0-9-]+) ([0-9a-f]{16}) (\\d+) (\\d+) (.+)$")
+      if m == nil then fail("screensavers/list.txt: not a screensaver's line: " .. text) end
+      if not exists("screensavers/" .. m.groups[1] .. "/main.roc") then
+        fail("screensavers/list.txt: no screensavers/" .. m.groups[1] .. "/main.roc")
+      end
+      push(listed, {
+        name = m.groups[1],
+        checksum = m.groups[2],
+        roc_tests = parse_int(m.groups[3]),
+        web_tests = parse_int(m.groups[4]),
+        help = m.groups[5],
+      })
+    end
+  end
+  if #listed == 0 then fail("screensavers/list.txt names no screensaver") end
+  return listed
+end

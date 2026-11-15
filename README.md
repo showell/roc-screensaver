@@ -32,10 +32,10 @@ own README describes the scene.
   1. Right-click the zip, choose **Extract All…**, then **Extract**.
      Explorer shows a zip's contents as a preview, and nothing inside can be
      run or installed from there.
-  2. Double-click `screensaver.exe` for a window that takes the keys (Q or
+  2. Double-click `lanterns.exe` for a window that takes the keys (Q or
      Esc quits). It is unsigned, so if Windows says "Windows protected your
      PC", choose **More info**, then **Run anyway**.
-  3. Right-click `screensaver.scr`, choose **Show more options** (Windows
+  3. Right-click `lanterns.scr`, choose **Show more options** (Windows
      11's short menu hides it; Shift+right-click opens the full menu), then
      **Install**, to make it your screensaver.
 
@@ -51,14 +51,18 @@ A screensaver is a folder in `screensavers/` with two roots over one app:
   shows under the canvas (made from the `controls` the app declares), and a
   few links, each opening in a new tab. `WasmApp.program(app)` shows none of
   them.
-- **`page.html`**, which names the wasm.
+- **`page.html`**, which names the wasm, `<folder>.wasm`.
+- **a line in `screensavers/list.txt`**, the one place that names the
+  screensavers: its folder, the checksum of its eighth native frame, its
+  expect counts and its keyboard help. The page's build, the gate and the
+  Windows workflow each take every screensaver listed there, so a new one
+  is one more line (the file's header says what each field is).
 
 The app itself uses `lib/`: `Shapes` and `Brush` to draw, `Font` for
 lettering the native painter can draw, `Input` and `Keys` for the keyboard,
 and `CanvasApp` to put it together. Copy lanterns' `main.roc`, `web.roc` and
 `page.html` to start. `zig build -Dapp=<folder>/main.roc` builds another app
-in place of lanterns. The page's build, the gate and the Windows workflow
-name lanterns alone for now; a second screensaver adds its name to each.
+in place of lanterns.
 
 Not every shape reaches Windows yet: the native painter has no `Text`, `Image`
 or `View(World)`, and paints `Blend(Add)` as ordinary blending.
@@ -75,12 +79,12 @@ You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
     zig build png -- out/x 48     # the frame after 48 steps, out/x/step-048.png
     zig build bench -Doptimize=ReleaseFast   # one cycle's frame times by phase, then win32's two-worker pipeline (about a minute)
     zig build test                # the seam against roc glue, frames painted and freed, keys, raster's fast paths
-    zig build -Dwindows           # zig-out/bin/screensaver.exe and .scr (x86_64-windows, ReleaseFast, from Linux too)
-    shale tools/web_build.shale   # the page, into the dev channel (opt=dev: quick; dest=NAME: another folder)
-    shale tools/verify.shale      # the gate: every check above and the live page, a line each
+    zig build -Dwindows           # zig-out/bin/lanterns.exe and .scr (x86_64-windows, ReleaseFast, from Linux too)
+    shale tools/web_build.shale   # every listed screensaver's page, into the dev channel (saver=NAME: one; opt=dev: quick; dest=NAME: another folder)
+    shale tools/verify.shale      # the gate: every check above for every listed screensaver, and the live pages, a line each
     shale tools/glue.shale        # after a change to platform/: roc glue's snapshot again
 
-On GitHub, `gh workflow run windows.yml` builds the screensaver on a Windows
+On GitHub, `gh workflow run windows.yml` builds each screensaver on a Windows
 runner, runs it headless (its last frame's checksum must match the PNG
 harness's) and uploads the artifact; `gh run download <run-id> -n
 windows-screensaver` fetches it.
@@ -146,11 +150,14 @@ windows-screensaver` fetches it.
   (`web/README.md`).
 - `lib/`: the vocabulary apps are written in, copied from roc-apps and
   allowed to drift, plus `Skin`.
-- `screensavers/lanterns/`: the screensaver.
+- `screensavers/`: the screensavers, a folder each (`lanterns/`,
+  `bubbles/`), and `list.txt`, which names them.
 - `examples/`: the host tests' fixtures: `basic/` draws every kind of
   `Frame` shape, and `keys/` counts the keys it is given.
 - `tools/`: the gate, the page's build, the glue regenerator, and
-  `web_shots.mjs`, which checks a live page in headless Chromium.
+  `web_shots.mjs`, which checks a live page in headless Chromium. The
+  scripts read `screensavers/list.txt` through `.shale/prelude.shale`'s
+  `screensavers_listed`.
 
 ## Pitfalls
 

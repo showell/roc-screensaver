@@ -1,59 +1,55 @@
 -- The gate: every check the repo has, one line each with its numbers, run
 -- from the repo's root as `shale tools/verify.shale`. It stops at the first
--- check that fails.
--- budget: steps=20000000
---   shale tools/verify.shale dest=lanterns-skins   # a branch's page, built and checked in its own folder
+-- check that fails. The screensavers it checks are screensavers/list.txt's,
+-- and each one's numbers (its checksum, its expects, its keyboard help) are
+-- on its line there.
+-- budget: steps=40000000 arena_bytes=400000000
+--   shale tools/verify.shale branch=skins   # a branch's pages, built and checked in their own folders (lanterns-skins, ...)
 --
 --   roc fmt --check over platform/, native/, examples/, screensavers/, lib/ and web/
 --   roc check of each root, held to zero errors and zero warnings by the
 --     report's marks, since a warning alone still exits 2: the basic and keys
---     examples, and the lanterns screensaver both ways, natively (main.roc)
---     and as a page (web.roc)
---   roc test of the lanterns screensaver, held to exactly `roc_tests_expected`
---     expects, native/'s (the adapter's and NativeApp's keys) and lib's among
---     them, and of its page root (web.roc), held to `roc_web_tests_expected`,
---     lib's Skin among them
+--     examples, and each screensaver both ways, natively (main.roc) and as a
+--     page (web.roc)
+--   roc test of each screensaver, held to exactly the expects its line names,
+--     native/'s (the adapter's and NativeApp's keys) and lib's among them, and
+--     of its page root (web.roc), held to its line's second count, lib's Skin
+--     among them
 --   zig fmt --check over build.zig and host/
---   zig build, which builds the example's archive and the harness
+--   zig build, which builds the default app's archive and the harness
 --   zig build bench-build, the frame-time bench compiled and not run
 --   zig build test, held to exactly `tests_expected` tests
---   the PNG harness over the lanterns screensaver: exactly `pngs_expected`
---     PNGs, the first and last differ, and the last one's checksum is
---     `last_checksum`, the number the Windows headless run on CI prints too
+--   for each screensaver:
+--   the PNG harness: exactly `pngs_expected` PNGs, the first and last
+--     differ, and the last one's checksum is its line's, the number the
+--     Windows headless run on CI prints too
 --   zig build -Dwindows, a cross-build: the Roc builds the x64win archive
 --     and host/win32.zig compiles and links with it for x86_64-windows, as a
---     GUI program, ReleaseFast as it ships, with a byte-identical .scr beside
---     the .exe. It does not run the .exe (this box has no Windows); CI's
---     workflow does, and holds its checksum to `last_checksum`
---   tools/web_build.shale, the lanterns page built into the dev channel's
---     `dest` folder (lanterns unless named) as it is served, the release (`--opt=speed`) wasm, held to the files it
---     serves and to BUILT saying `opt speed`
+--     GUI program, ReleaseFast as it ships, with a byte-identical <name>.scr
+--     beside <name>.exe. It does not run the .exe (this box has no Windows);
+--     CI's workflow does, and holds its checksum to the line's
+--   tools/web_build.shale, the page built into the dev channel's folder
+--     (its name, or <name>-<branch>) as it is served, the release
+--     (`--opt=speed`) wasm, held to the files it serves and to BUILT saying
+--     `opt speed`
 --   the live page, loaded from the dev server in headless Chromium
 --     (tools/web_shots.mjs): no console error; the first frame shown still
 --     under the warming-up indicator and unchanged until the ride starts; the
 --     ride's first drawn frame the same as `?step=N`'s for the steps it shows,
 --     so the warm-up left the model alone; Steve's skin (web.roc) under the
---     canvas: the keyboard help made from the app's three controls, and the
---     links Home and Code with their addresses, each opening in a new tab,
---     each line held exactly; and
+--     canvas: the keyboard help made from the app's controls, as its line
+--     says, and the links Home and Code with their addresses, each opening in
+--     a new tab, each line held exactly; and
 --     two screenshots 1.5 s apart with no input differ, so the page animates.
 --     The shots come 1.3 s after the first frame, past the warm-up (at most
 --     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
 --     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 15
-const roc_tests_expected = 233
-const roc_web_tests_expected = 227
--- What Steve's skin puts under the lanterns' canvas, as tools/web_shots.mjs
--- reads it off the page.
-const skin_help_expected = "skin help: Space pauses and resumes · R restarts at dawn · → skips ahead a crossing"
+-- The links Steve's skin puts under every screensaver's canvas, as
+-- tools/web_shots.mjs reads them off the page.
 const skin_links_expected = "skin links: Home https://roc.lynrummy.com in a new tab, Code https://github.com/showell/roc-screensaver in a new tab"
 const pngs_expected = 8
--- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
--- to the scene, the adapter or the rasterizer moves it, in the same commit,
--- here and in .github/workflows/windows.yml's headless step.
-const last_checksum = "a153a4366764142f"
-const png_dir = ".zig-cache/verify-png"
 
 if not exists("platform/main.roc") then
   fail("verify: run it from roc-screensaver's root (no platform/main.roc here)")
@@ -69,6 +65,100 @@ function line(name, ok, detail, ms)
   if not ok then fail("verify: " .. name .. " failed") end
 end
 
+-- `roc test` of one root, held to exactly `expected` expects.
+function roc_test_line(root, expected)
+  local r = run({roc, "test", root}, {timeout_ms = 100000, tail = 40})
+  local all_passed = re_find(r.out, "All \\((\\d+)\\) tests passed")
+  local ran = 0
+  if all_passed ~= nil then ran = parse_int(all_passed.group) end
+  if r.code ~= 0 or ran ~= expected then print(r.out) end
+  line("roc test " .. root, r.code == 0 and ran == expected, ran .. " passed, " .. expected .. " expected", r.ms)
+end
+
+-- The PNG harness over one screensaver: its first frames, the last one's
+-- checksum held to the screensaver's line.
+function png_line(saver)
+  local png_dir = ".zig-cache/verify-png/" .. saver.name
+  if exists(png_dir) then remove_tree(png_dir) end
+  local r = run({"zig", "build", "png", "-Dapp=screensavers/" .. saver.name .. "/main.roc", "--", png_dir}, {timeout_ms = 120000, tail = 20})
+  if r.code ~= 0 then print(r.out) end
+  local pngs = glob(png_dir .. "/*.png", {hidden = true})
+  local first = png_dir .. "/frame-000.png"
+  local last = png_dir .. "/frame-00" .. (pngs_expected - 1) .. ".png"
+  local differ = #pngs == pngs_expected and read(first) ~= read(last)
+  local said = "the first and last differ"
+  if not differ then said = "the first and last are the same" end
+  local sum = re_find(r.out, "checksum ([0-9a-f]{16})")
+  local same_sum = sum ~= nil and sum.group == saver.checksum
+  if sum ~= nil then said = said .. ", the last's checksum " .. sum.group .. ", " .. saver.checksum .. " expected" end
+  line("png harness " .. saver.name, r.code == 0 and #pngs == pngs_expected and differ and same_sum, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
+end
+
+-- The Windows cross-build of one screensaver, <name>.exe and <name>.scr.
+function windows_line(saver)
+  local exe = "zig-out/bin/" .. saver.name .. ".exe"
+  local scr = "zig-out/bin/" .. saver.name .. ".scr"
+  for p in {exe, scr} do
+    if exists(p) then remove(p) end
+  end
+  local r = run({"zig", "build", "-Dwindows", "-Dapp=screensavers/" .. saver.name .. "/main.roc"}, {timeout_ms = 300000, tail = 40})
+  if r.code ~= 0 then print(r.out) end
+  local built = exists(exe) and exists(scr)
+  local pe = built and sub(read(exe), 1, 2) == "MZ"
+  local same = built and read(exe) == read(scr)
+  local kind = "no " .. saver.name .. ".exe and .scr"
+  if built then
+    kind = saver.name .. ".exe, " .. stat(exe).size .. " bytes"
+    if not pe then kind = kind .. ", not a PE file" end
+    if not same then kind = kind .. ", the .scr differs" end
+  end
+  line("zig build -Dwindows " .. saver.name, r.code == 0 and pe and same, kind, r.ms)
+end
+
+-- One screensaver's page built into the dev channel's `folder`, then loaded
+-- there in headless Chromium.
+function page_lines(saver, folder)
+  local page_url = "http://143.244.172.148:9210/" .. folder .. "/"
+  local wasm = saver.name .. ".wasm"
+  local r = run({"shale", "tools/web_build.shale", "saver=" .. saver.name, "dest=" .. folder}, {timeout_ms = 300000, tail = 20})
+  local served = "build:roc-apps/next/" .. folder
+  local pieces = 0
+  for f in {"index.html", wasm, "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"} do
+    if exists(served .. "/" .. f) then pieces = pieces + 1 end
+  end
+  local release = exists(served .. "/BUILT") and contains(read(served .. "/BUILT"), "\nopt speed\n")
+  local wasm_size = "no wasm"
+  if exists(served .. "/" .. wasm) then wasm_size = "a " .. stat(served .. "/" .. wasm).size .. "-byte wasm" end
+  local opt_said = "opt speed"
+  if not release then opt_said = "BUILT does not say opt speed" end
+  if r.code ~= 0 or pieces ~= 5 or not release then print(r.out) end
+  line("web build " .. saver.name, r.code == 0 and pieces == 5 and release, pieces .. " of 5 files served at " .. page_url .. ", " .. opt_said .. ", " .. wasm_size, r.ms)
+
+  local shots = ".zig-cache/verify-web/" .. saver.name
+  if exists(shots) then remove_tree(shots) end
+  r = run({"node", "tools/web_shots.mjs", page_url, shots, "1300", "2800"},
+    {timeout_ms = 60000, tail = 20, want = "web-shots: headless Chromium over DevTools, as tools/web_shots.mjs says"})
+  local early = shots .. "/at_01300ms.png"
+  local late = shots .. "/at_02800ms.png"
+  local moved = exists(early) and exists(late) and read(early) ~= read(late)
+  local skin_dressed = contains(r.out, "skin help: " .. saver.help .. "\n") and contains(r.out, skin_links_expected .. "\n")
+  if r.code ~= 0 or not moved or not skin_dressed then print(r.out) end
+  local seen = "the two shots are the same"
+  if moved then seen = "the shots 1.5 s apart differ" end
+  local warm_said = re_find(r.out, "warm-up: [^\n]*")
+  if warm_said ~= nil then seen = seen .. "; " .. warm_said.text end
+  local ride_said = re_find(r.out, "ride: [^\n]*")
+  if ride_said ~= nil then seen = seen .. "; " .. ride_said.text end
+  if skin_dressed then
+    seen = seen .. "; the skin's help and links as web.roc says"
+  else
+    seen = seen .. "; the skin's help or links are not as web.roc says"
+  end
+  line("live page " .. saver.name, r.code == 0 and moved and skin_dressed, seen, r.ms)
+end
+
+const savers = screensavers_listed()
+
 const roc_dirs = {"platform", "native", "examples", "screensavers", "lib", "web"}
 local fmt_argv = {roc, "fmt", "--check"}
 for d in roc_dirs do push(fmt_argv, d) end
@@ -77,7 +167,12 @@ local formatted = 0
 for d in roc_dirs do formatted = formatted + #glob(d .. "/**/*.roc") end
 line("roc fmt --check", r.code == 0, formatted .. " files, " .. lines(trim(r.out))[1], r.ms)
 
-for root in {"examples/basic/main.roc", "examples/keys/main.roc", "screensavers/lanterns/main.roc", "screensavers/lanterns/web.roc"} do
+local roots = {"examples/basic/main.roc", "examples/keys/main.roc"}
+for saver in savers do
+  push(roots, "screensavers/" .. saver.name .. "/main.roc")
+  push(roots, "screensavers/" .. saver.name .. "/web.roc")
+end
+for root in roots do
   r = run({roc, "check", root}, {timeout_ms = 60000, whole = 200000})
   local errors = #find_all(r.out, "── ✗")
   local warnings = #find_all(r.out, "── ●")
@@ -85,19 +180,10 @@ for root in {"examples/basic/main.roc", "examples/keys/main.roc", "screensavers/
   line("roc check " .. root, errors == 0 and warnings == 0, errors .. " errors, " .. warnings .. " warnings", r.ms)
 end
 
-r = run({roc, "test", "screensavers/lanterns/main.roc"}, {timeout_ms = 100000, tail = 40})
-local all_passed = re_find(r.out, "All \\((\\d+)\\) tests passed")
-local roc_ran = 0
-if all_passed ~= nil then roc_ran = parse_int(all_passed.group) end
-if r.code ~= 0 or roc_ran ~= roc_tests_expected then print(r.out) end
-line("roc test", r.code == 0 and roc_ran == roc_tests_expected, roc_ran .. " passed, " .. roc_tests_expected .. " expected", r.ms)
-
-r = run({roc, "test", "screensavers/lanterns/web.roc"}, {timeout_ms = 100000, tail = 40})
-all_passed = re_find(r.out, "All \\((\\d+)\\) tests passed")
-roc_ran = 0
-if all_passed ~= nil then roc_ran = parse_int(all_passed.group) end
-if r.code ~= 0 or roc_ran ~= roc_web_tests_expected then print(r.out) end
-line("roc test web.roc", r.code == 0 and roc_ran == roc_web_tests_expected, roc_ran .. " passed, " .. roc_web_tests_expected .. " expected", r.ms)
+for saver in savers do
+  roc_test_line("screensavers/" .. saver.name .. "/main.roc", saver.roc_tests)
+  roc_test_line("screensavers/" .. saver.name .. "/web.roc", saver.web_tests)
+end
 
 r = run({"zig", "fmt", "--check", "build.zig", "host"}, {timeout_ms = 30000, tail = 20})
 if r.code ~= 0 then print(r.out) end
@@ -122,72 +208,13 @@ end
 if r.code ~= 0 or ran ~= tests_expected then print(r.out) end
 line("zig build test", r.code == 0 and passed == tests_expected and ran == tests_expected, passed .. " of " .. ran .. " passed, " .. tests_expected .. " expected", r.ms)
 
-if exists(png_dir) then remove_tree(png_dir) end
-r = run({"zig", "build", "png", "--", png_dir}, {timeout_ms = 120000, tail = 20})
-if r.code ~= 0 then print(r.out) end
-local pngs = glob(png_dir .. "/*.png", {hidden = true})
-local first = png_dir .. "/frame-000.png"
-local last = png_dir .. "/frame-00" .. (pngs_expected - 1) .. ".png"
-local differ = #pngs == pngs_expected and read(first) ~= read(last)
-local said = "the first and last differ"
-if not differ then said = "the first and last are the same" end
-local sum = re_find(r.out, "checksum ([0-9a-f]{16})")
-local same_sum = sum ~= nil and sum.group == last_checksum
-if sum ~= nil then said = said .. ", the last's checksum " .. sum.group .. ", " .. last_checksum .. " expected" end
-line("png harness", r.code == 0 and #pngs == pngs_expected and differ and same_sum, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
+for saver in savers do png_line(saver) end
+for saver in savers do windows_line(saver) end
 
-const exe = "zig-out/bin/screensaver.exe"
-const scr = "zig-out/bin/screensaver.scr"
-for p in {exe, scr} do
-  if exists(p) then remove(p) end
+local branch = arg("branch", "")
+if branch ~= "" and re_find(branch, "^[a-z0-9-]+$") == nil then fail("verify: branch=" .. branch .. " is not a plain folder name") end
+for saver in savers do
+  local folder = saver.name
+  if branch ~= "" then folder = saver.name .. "-" .. branch end
+  page_lines(saver, folder)
 end
-r = run({"zig", "build", "-Dwindows"}, {timeout_ms = 300000, tail = 40})
-if r.code ~= 0 then print(r.out) end
-local built = exists(exe) and exists(scr)
-local pe = built and sub(read(exe), 1, 2) == "MZ"
-local same = built and read(exe) == read(scr)
-local kind = "no .exe and .scr"
-if built then
-  kind = stat(exe).size .. " bytes"
-  if not pe then kind = kind .. ", not a PE file" end
-  if not same then kind = kind .. ", the .scr differs" end
-end
-line("zig build -Dwindows", r.code == 0 and pe and same, kind, r.ms)
-
-local dest = arg("dest", "lanterns")
-local page_url = "http://143.244.172.148:9210/" .. dest .. "/"
-r = run({"shale", "tools/web_build.shale", "dest=" .. dest}, {timeout_ms = 300000, tail = 20})
-local served = "build:roc-apps/next/" .. dest
-local pieces = 0
-for f in {"index.html", "lanterns.wasm", "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"} do
-  if exists(served .. "/" .. f) then pieces = pieces + 1 end
-end
-local release = exists(served .. "/BUILT") and contains(read(served .. "/BUILT"), "\nopt speed\n")
-local wasm_size = "no wasm"
-if exists(served .. "/lanterns.wasm") then wasm_size = "a " .. stat(served .. "/lanterns.wasm").size .. "-byte wasm" end
-local opt_said = "opt speed"
-if not release then opt_said = "BUILT does not say opt speed" end
-if r.code ~= 0 or pieces ~= 5 or not release then print(r.out) end
-line("web build", r.code == 0 and pieces == 5 and release, pieces .. " of 5 files served at " .. page_url .. ", " .. opt_said .. ", " .. wasm_size, r.ms)
-
-const shots = ".zig-cache/verify-web"
-if exists(shots) then remove_tree(shots) end
-r = run({"node", "tools/web_shots.mjs", page_url, shots, "1300", "2800"},
-  {timeout_ms = 60000, tail = 20, want = "web-shots: headless Chromium over DevTools, as tools/web_shots.mjs says"})
-local early = shots .. "/at_01300ms.png"
-local late = shots .. "/at_02800ms.png"
-local moved = exists(early) and exists(late) and read(early) ~= read(late)
-local skin_dressed = contains(r.out, skin_help_expected .. "\n") and contains(r.out, skin_links_expected .. "\n")
-if r.code ~= 0 or not moved or not skin_dressed then print(r.out) end
-local seen = "the two shots are the same"
-if moved then seen = "the shots 1.5 s apart differ" end
-local warm_said = re_find(r.out, "warm-up: [^\n]*")
-if warm_said ~= nil then seen = seen .. "; " .. warm_said.text end
-local ride_said = re_find(r.out, "ride: [^\n]*")
-if ride_said ~= nil then seen = seen .. "; " .. ride_said.text end
-if skin_dressed then
-  seen = seen .. "; the skin's help and links as web.roc says"
-else
-  seen = seen .. "; the skin's help or links are not as web.roc says"
-end
-line("live page", r.code == 0 and moved and skin_dressed, seen, r.ms)

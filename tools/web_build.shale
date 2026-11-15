@@ -1,10 +1,11 @@
--- web_build.shale builds the lanterns screensaver's page into the dev channel,
--- ~/build/roc-apps/next/lanterns/, which roc-apps' dev server serves at
--- http://143.244.172.148:9210/lanterns/.
+-- web_build.shale builds each screensaver's page in screensavers/list.txt into
+-- the dev channel, ~/build/roc-apps/next/<name>/, which roc-apps' dev server
+-- serves at http://143.244.172.148:9210/<name>/.
 --
---   shale tools/web_build.shale            # the release wasm, what is served
+--   shale tools/web_build.shale            # every screensaver's page, the release wasm, what is served
+--   shale tools/web_build.shale saver=bubbles          # that screensaver's alone
 --   shale tools/web_build.shale opt=dev    # the dev backend, for quick iteration
---   shale tools/web_build.shale dest=lanterns-skins   # into another folder of the dev channel, for a branch
+--   shale tools/web_build.shale saver=lanterns dest=lanterns-skins   # into another folder of the dev channel, for a branch
 --
 -- It builds the wasm host (web/platform/host.zig, against the roc checkout's
 -- builtins, with Zig 0.16 as roc-apps does), then the app's wasm with the
@@ -14,8 +15,6 @@
 -- are the ones the page is meant to be seen with. BUILT says which was built.
 -- Everything goes to a staging folder that takes the page's place only when every step passed, so a failed build leaves the
 -- served page as it was.
-
-const NAME = "lanterns"
 
 -- The pinned compiler, from this repo's roc-version, refused unless it says
 -- it is that pin.
@@ -32,44 +31,68 @@ function marks_of(out)
   return #find_all(out, "✗") + #find_all(out, "●")
 end
 
+-- One screensaver's page, its wasm and glue built into a staging folder that
+-- takes the place of the dev channel's `folder` only when every step passed.
+function page_build(roc, page)
+  local name = page.name
+  local opt = page.opt
+  local dest = "build:roc-apps/next/" .. page.folder
+  local staging = dest .. ".staging"
+  if exists(staging) then remove_tree(staging) end
+  mkdir(staging)
+
+  local wasm_path = staging .. "/" .. name .. ".wasm"
+  local wasm = run({roc, "build", "web.roc", "--target=wasm32", "--opt=" .. opt, "--output=" .. real(wasm_path)},
+    {cwd = "screensavers/" .. name, timeout_ms = 300000, tail = 60})
+  if marks_of(wasm.out) > 0 or not exists(wasm_path) then
+    print(wasm.out)
+    fail("web_build: " .. name .. "'s wasm build failed")
+  end
+  print(name .. " wasm (opt " .. opt .. "): " .. wasm.ms .. " ms, " .. stat(wasm_path).size .. " bytes")
+
+  local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), "web/platform/main.roc"},
+    {timeout_ms = 120000, tail = 30}))
+  if not exists(staging .. "/roc_glue.js") then print(glue.out) fail("web_build: glue wrote no roc_glue.js") end
+  print(name .. " glue: " .. glue.ms .. " ms")
+
+  copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
+  copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
+  copy("screensavers/" .. name .. "/page.html", staging .. "/index.html")
+  create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n")
+
+  if exists(dest) then remove_tree(dest) end
+  copy(staging, dest)
+  remove_tree(staging)
+  for p in glob(dest .. "/*") do print(p) end
+  print("dev: http://143.244.172.148:9210/" .. page.folder .. "/")
+end
+
 local opt = arg("opt", "speed")
--- The dev channel's folder, a plain name, so a branch's build never replaces
--- the page master's build serves.
-local folder = arg("dest", NAME)
-if re_find(folder, "^[a-z0-9-]+$") == nil then fail("web_build: dest=" .. folder .. " is not a plain folder name") end
-local DEST = "build:roc-apps/next/" .. folder
 if opt ~= "speed" and opt ~= "dev" then fail("web_build: opt=" .. opt .. " is neither speed (the default) nor dev") end
+local listed = screensavers_listed()
+local names = {}
+for s in listed do push(names, s.name) end
+local saver = arg("saver", "")
+if saver ~= "" then
+  if not has_item(names, saver) then fail("web_build: saver=" .. saver .. " is not in screensavers/list.txt") end
+  names = {saver}
+end
+-- The dev channel's folder, a plain name, so a branch's build never replaces
+-- the page master's build serves. It names one page, so it needs one saver.
+local dest = arg("dest", "")
+if dest ~= "" then
+  if saver == "" then fail("web_build: dest=" .. dest .. " names one folder; say which saver= goes in it") end
+  if re_find(dest, "^[a-z0-9-]+$") == nil then fail("web_build: dest=" .. dest .. " is not a plain folder name") end
+end
 
 local roc = pinned_roc()
-local staging = DEST .. ".staging"
-if exists(staging) then remove_tree(staging) end
-mkdir(staging)
-
+-- The wasm host is the same for every page, so it is built once.
 local host = must(run({real("zig016:zig"), "build", "-Droc=" .. real("repos:roc"),
   "--cache-dir", real("build:roc-screensaver/zig-cache"), "--global-cache-dir", real("build:zig-global")},
   {cwd = "web", timeout_ms = 300000, tail = 30}))
 print("host: " .. host.ms .. " ms")
-
-local wasm = run({roc, "build", "web.roc", "--target=wasm32", "--opt=" .. opt, "--output=" .. real(staging) .. "/" .. NAME .. ".wasm"},
-  {cwd = "screensavers/" .. NAME, timeout_ms = 300000, tail = 60})
-if marks_of(wasm.out) > 0 or not exists(staging .. "/" .. NAME .. ".wasm") then
-  print(wasm.out)
-  fail("web_build: the wasm build failed")
+for name in names do
+  local folder = name
+  if dest ~= "" then folder = dest end
+  page_build(roc, {name = name, folder = folder, opt = opt})
 end
-print("wasm (opt " .. opt .. "): " .. wasm.ms .. " ms, " .. stat(staging .. "/" .. NAME .. ".wasm").size .. " bytes")
-
-local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), "web/platform/main.roc"},
-  {timeout_ms = 120000, tail = 30}))
-if not exists(staging .. "/roc_glue.js") then print(glue.out) fail("web_build: glue wrote no roc_glue.js") end
-print("glue: " .. glue.ms .. " ms")
-
-copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
-copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
-copy("screensavers/" .. NAME .. "/page.html", staging .. "/index.html")
-create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n")
-
-if exists(DEST) then remove_tree(DEST) end
-copy(staging, DEST)
-remove_tree(staging)
-for p in glob(DEST .. "/*") do print(p) end
-print("dev: http://143.244.172.148:9210/" .. folder .. "/")
