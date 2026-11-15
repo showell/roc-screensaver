@@ -26,7 +26,7 @@
 --     apart with no input differ, so the page animates
 
 const tests_expected = 5
-const roc_tests_expected = 179
+const roc_tests_expected = 186
 const pngs_expected = 8
 -- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
 -- to the scene, the adapter or the rasterizer moves it, in the same commit.

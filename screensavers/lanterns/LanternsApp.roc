@@ -410,5 +410,24 @@ expect (camera_at(leg_steps).along() - camera_at(0).along() - RoadLamps.lamp_spa
 expect (camera_at(2 * leg_steps).along() - camera_at(leg_steps).along() - RoadLamps.lamp_spacing).abs() < 1.0e-9
 expect camera_at(0).along() == RoadLamps.even_along(0) - follow_distance
 
+# The cycle is forty legs of setting and a perch's hold, and it starts again
+# from the first model on its last step and not a step before.
+expect cycle_steps == 40 * 66 + 30
+expect {
+	last = { flight: BirdFlight.first, steps_into_leg: 29, steps: cycle_steps - 1 }
+	model_at_next_step(last, Input.none) == first_model
+}
+expect {
+	before_last = { flight: BirdFlight.first, steps_into_leg: 28, steps: cycle_steps - 2 }
+	after = model_at_next_step(before_last, Input.none)
+	after.steps == cycle_steps - 1 and after.steps_into_leg == 29
+}
+
+# Dusk runs from 0 to 1 over the setting and stays at 1 through the hold.
+expect dusk_at(0) == Fraction.zero
+expect dusk_at(setting_steps / 2) == Fraction.of(0.5)
+expect dusk_at(setting_steps - 1) != Fraction.whole
+expect dusk_at(setting_steps) == Fraction.whole and dusk_at(cycle_steps - 1) == Fraction.whole
+
 # A frame draws the backdrop, the lamps, their pools and the bird.
 expect LanternsApp.frame_shapes({ flight: BirdFlight.first, steps_into_leg: 40, steps: 40 }).len() > 50
