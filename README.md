@@ -31,10 +31,25 @@ One app value, `LanternsApp.canvas_app` (a lib `CanvasApp`), runs both ways:
   times a second by `web/canvas_app_runner.js` and painted by
   `web/shapes_canvas.js`: `shale tools/web_build.shale` builds it into the
   dev channel, http://143.244.172.148:9210/lanterns/ (`?step=N` shows the
-  frame after N steps and stops there, for a side-by-side);
+  frame after N steps and stops there, for a side-by-side). The build is
+  Roc's `--opt=speed` wasm, about 140 KB and 8 s, which is what is served;
+  `shale tools/web_build.shale opt=dev` builds the dev backend's (about
+  400 KB) for quick iteration;
 - natively, through `main.roc` and `native/NativeApp.roc`, whose
   `native/FrameOfShapes.roc` turns each frame's shapes into a `Frame` that
   host/raster.zig paints: the PNG harness, and the Windows `.scr`.
+
+The page starts on its first frame, still, under a small "warming up" pill
+near the top, as soon as the wasm is ready. Firefox compiles a wasm module
+twice, a quick tier and then an optimizing one in the background, and frames
+drawn before it switches run slowly, so the runner computes, decodes and
+paints throwaway frames of the same model onto a canvas a few pixels wide for
+up to 0.4 s (stopping sooner once the frames have plainly sped up and
+settled), then fades the pill and starts the ride from that frame. Nothing in
+the warm-up steps the model. `?timing=1` logs how many throwaway frames ran,
+how long they took, and each one's time. In headless Chromium it runs about
+110 to 130 frames in 0.3 s, from about 4 ms a frame to about 1 ms; Firefox
+itself is not on this box, so the effect there is unmeasured.
 
 `zig build png -- out/x 20 48` and `node tools/web_shots.mjs <page url>
 out/y step=20 step=48` write `step-020.png` and `step-048.png` each way, the
@@ -112,7 +127,7 @@ to move as a real app uses it.
     zig build png -- out/x      # its first 8 frames, out/x/frame-000.png ...
     zig build png -- out/x 48   # the frame after 48 steps, out/x/step-048.png
     zig build test              # the seam against roc glue; the basic example's frames painted and freed
-    shale tools/web_build.shale # the lanterns page, into the dev channel
+    shale tools/web_build.shale # the lanterns page, into the dev channel (opt=dev: the dev backend)
     zig build -Dwindows         # zig-out/bin/screensaver.exe and screensaver.scr (x86_64-windows)
     zig build -Dwindows headless  # on Windows: the .exe with no window, the last frame's checksum
     shale tools/verify.shale    # the gate: every check, a line each

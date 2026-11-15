@@ -19,11 +19,18 @@
 --     and host/win32.zig compiles and links with it for x86_64-windows, as a
 --     GUI program, with a byte-identical .scr beside the .exe. It does not
 --     run the .exe (this box has no Windows); CI's workflow does
---   tools/web_build.shale, the lanterns page built into the dev channel, held
---     to the wasm and the files it serves
+--   tools/web_build.shale, the lanterns page built into the dev channel as it
+--     is served, the release (`--opt=speed`) wasm, held to the files it
+--     serves and to BUILT saying `opt speed`
 --   the live page, loaded from the dev server in headless Chromium
---     (tools/web_shots.mjs): no console error, and two screenshots 1.5 s
---     apart with no input differ, so the page animates
+--     (tools/web_shots.mjs): no console error; the first frame shown still
+--     under the warming-up indicator and unchanged until the ride starts; the
+--     ride's first drawn frame the same as `?step=N`'s for the steps it shows,
+--     so the warm-up left the model alone; and
+--     two screenshots 1.5 s apart with no input differ, so the page animates.
+--     The shots come 1.3 s after the first frame, past the warm-up (at most
+--     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
+--     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 5
 const roc_tests_expected = 186
@@ -127,17 +134,26 @@ local pieces = 0
 for f in {"index.html", "lanterns.wasm", "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"} do
   if exists(served .. "/" .. f) then pieces = pieces + 1 end
 end
-if r.code ~= 0 or pieces ~= 5 then print(r.out) end
-line("web build", r.code == 0 and pieces == 5, pieces .. " of 5 files served at http://143.244.172.148:9210/lanterns/", r.ms)
+local release = exists(served .. "/BUILT") and contains(read(served .. "/BUILT"), "\nopt speed\n")
+local wasm_size = "no wasm"
+if exists(served .. "/lanterns.wasm") then wasm_size = "a " .. stat(served .. "/lanterns.wasm").size .. "-byte wasm" end
+local opt_said = "opt speed"
+if not release then opt_said = "BUILT does not say opt speed" end
+if r.code ~= 0 or pieces ~= 5 or not release then print(r.out) end
+line("web build", r.code == 0 and pieces == 5 and release, pieces .. " of 5 files served at http://143.244.172.148:9210/lanterns/, " .. opt_said .. ", " .. wasm_size, r.ms)
 
 const shots = ".zig-cache/verify-web"
 if exists(shots) then remove_tree(shots) end
-r = run({"node", "tools/web_shots.mjs", "http://143.244.172.148:9210/lanterns/", shots, "200", "1700"},
+r = run({"node", "tools/web_shots.mjs", "http://143.244.172.148:9210/lanterns/", shots, "1300", "2800"},
   {timeout_ms = 60000, tail = 20, want = "web-shots: headless Chromium over DevTools, as tools/web_shots.mjs says"})
-local early = shots .. "/at_00200ms.png"
-local late = shots .. "/at_01700ms.png"
+local early = shots .. "/at_01300ms.png"
+local late = shots .. "/at_02800ms.png"
 local moved = exists(early) and exists(late) and read(early) ~= read(late)
 if r.code ~= 0 or not moved then print(r.out) end
 local seen = "the two shots are the same"
 if moved then seen = "the shots 1.5 s apart differ" end
+local warm_said = re_find(r.out, "warm-up: [^\n]*")
+if warm_said ~= nil then seen = seen .. "; " .. warm_said.text end
+local ride_said = re_find(r.out, "ride: [^\n]*")
+if ride_said ~= nil then seen = seen .. "; " .. ride_said.text end
 line("live page", r.code == 0 and moved, seen, r.ms)

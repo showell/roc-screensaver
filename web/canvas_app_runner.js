@@ -24,6 +24,10 @@
 // `?step=N` shows the frame after N steps and stops there, so a page can be
 // laid beside the native harness's frame at the same step (`zig build png`).
 //
+// A moving page starts on its first frame, still, under a small "warming up"
+// pill, while throwaway frames give the browser time to finish compiling the
+// wasm (the warm-up, below); then the ride starts from that same frame.
+//
 // No hint: every game draws the keys it reads in its own HUD, which is the
 // only place that cannot drift from the keys it actually reads.
 //
@@ -269,7 +273,8 @@ const FRAME_SPLIT = { computeMs: 0, decodeMs: 0, paintMs: 0 };
 
 // With `?timing=1` in the address, the first frames' times go to the console:
 // how long the wasm took to load and compile and to take its opening presses,
-// then per frame the gap since the last one, the steps taken, and the
+// how many throwaway frames the warm-up ran and how long they took (each one's
+// time on a line of its own), then per frame the gap since the last one, the steps taken, and the
 // milliseconds spent stepping and drawing. Comparing the first TIMED_WINDOW of
 // the TIMED_FRAMES frames with the last tells a slow start (the engine still on
 // its first, unoptimized code) from a slow ride. Without it nothing is
@@ -282,8 +287,15 @@ function frameTimer() {
   const first = [0, TIMED_WINDOW];
   const last = [TIMED_FRAMES - TIMED_WINDOW, TIMED_FRAMES];
   return {
-    loaded: (ms) =>
-      console.log(`canvas_app_runner: wasm loaded, compiled and through its opening presses in ${ms.toFixed(0)} ms`),
+    loaded: (ms, warm) => {
+      const each = (at) => (warm.times.length ? warm.times[at].toFixed(1) : '-');
+      console.log(
+        `canvas_app_runner: wasm loaded, compiled and through its opening presses in ${ms.toFixed(0)} ms; ` +
+          `warmed up on ${warm.times.length} throwaway frames in ${warm.ms.toFixed(0)} ms ` +
+          `(${each(0)} ms the first, ${each(warm.times.length - 1)} ms the last; ${warm.stoppedBy})`,
+      );
+      console.log(`canvas_app_runner: warm-up frame ms ${warm.times.map((t) => t.toFixed(1)).join(' ')}`);
+    },
     frame: (row) => {
       if (rows.length >= TIMED_FRAMES) return;
       rows.push(row);
@@ -304,6 +316,105 @@ function frameTimer() {
           `steps taken ${steps(...first)} then ${steps(...last)}`,
       );
     },
+  };
+}
+
+// ── the warm-up ────────────────────────────────────────────────────────────
+// Firefox compiles a wasm module twice: a quick tier first, so the page can
+// start at once, then its optimizing tier in the background, switching over
+// when that is ready. Frames drawn before the switch run on the slow code, so
+// a ride that starts at once stutters through its first frames. So the first
+// frame is shown still, under a quiet indicator, while throwaway frames of the
+// same model are computed, decoded and painted onto a canvas nobody sees,
+// giving the engine time to finish.
+//
+// Only the frame is warmed, never the step: there is no way to step a model
+// and take the step back, and a step of the lanterns is a few sums against a
+// frame's hundreds of shapes. Nothing here calls `advance`, so the ride starts
+// from the model the still frame shows.
+//
+// A steady time per frame does not mean the fast code has arrived, since the
+// quick tier is steady too, only slower. So the warm-up runs for its budget,
+// and stops sooner only on what a switch looks like: the last few frames well
+// under the first few and close to one another.
+const WARM_BUDGET_MS = 400;
+const WARM_WINDOW = 8; // frames compared at each end, enough to outvote one slow frame
+const WARM_SPED_UP = 0.6; // the last frames' mean against the first frames'
+const WARM_SETTLED = 1.2; // the slowest of the last frames against the fastest
+const WARM_SLICE_MS = 25; // work between yields, so the page stays responsive
+
+const later = () => new Promise((done) => setTimeout(done, 0));
+const nextPaint = () => new Promise((done) => requestAnimationFrame(() => done()));
+const mean = (list) => list.reduce((sum, t) => sum + t, 0) / list.length;
+
+function spedUpAndSettled(times) {
+  if (times.length < 2 * WARM_WINDOW) return false;
+  const last = times.slice(-WARM_WINDOW);
+  return mean(last) < WARM_SPED_UP * mean(times.slice(0, WARM_WINDOW)) &&
+    Math.max(...last) <= WARM_SETTLED * Math.min(...last);
+}
+
+// The throwaway frames are painted, through the same calls, onto a canvas a
+// few pixels wide. The JavaScript that paints warms up just the same, while
+// the browser's rasterizing, which no compile tier speeds up, costs next to
+// nothing; at full size it took about 100 ms a slice in headless Chromium.
+const OFFSTAGE_WIDTH = 16;
+
+async function warmUp(game, width, height) {
+  const offstage = document.createElement('canvas');
+  offstage.width = OFFSTAGE_WIDTH;
+  offstage.height = Math.max(1, Math.round((OFFSTAGE_WIDTH * height) / width));
+  const ctx = offstage.getContext('2d');
+  const scale = OFFSTAGE_WIDTH / width;
+  const times = [];
+  const start = performance.now();
+  for (;;) {
+    const sliceStart = performance.now();
+    while (performance.now() - sliceStart < WARM_SLICE_MS) {
+      const frameStart = performance.now();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, offstage.width, offstage.height);
+      ShapesCanvas.paint(ctx, game.frame(), scale);
+      times.push(performance.now() - frameStart);
+      if (spedUpAndSettled(times)) return { times, ms: performance.now() - start, stoppedBy: 'sped up and settled' };
+      if (performance.now() - start >= WARM_BUDGET_MS) return { times, ms: performance.now() - start, stoppedBy: 'its budget' };
+    }
+    await later();
+  }
+}
+
+const NO_WARM_UP = { times: [], ms: 0, stoppedBy: 'a still page' };
+
+// A small pill near the top of the canvas, over the still frame: a soft dot
+// that breathes and two quiet words. It sits on the page, not in the canvas,
+// so the canvas holds only the app's frame.
+function showWarming(canvas) {
+  const style = document.createElement('style');
+  style.textContent = '@keyframes canvas-app-breathe{0%,100%{opacity:.35}50%{opacity:1}}';
+  document.head.appendChild(style);
+  const pill = document.createElement('div');
+  pill.id = 'warming-indicator';
+  pill.style.cssText =
+    'position:fixed;transform:translateX(-50%);pointer-events:none;display:flex;align-items:center;gap:7px;' +
+    'padding:3px 11px 3px 9px;border-radius:999px;background:rgba(6,8,15,0.42);color:rgba(236,228,210,0.78);' +
+    'font:11px system-ui,sans-serif;letter-spacing:0.04em;opacity:1;transition:opacity 450ms ease';
+  const dot = document.createElement('span');
+  dot.style.cssText =
+    'width:6px;height:6px;border-radius:50%;background:#f3c873;animation:canvas-app-breathe 1.1s ease-in-out infinite';
+  pill.append(dot, 'warming up');
+  const place = () => {
+    const box = canvas.getBoundingClientRect();
+    pill.style.left = `${box.left + box.width / 2}px`;
+    pill.style.top = `${box.top + 12}px`;
+  };
+  place();
+  window.addEventListener('resize', place);
+  document.body.appendChild(pill);
+  return () => {
+    window.removeEventListener('resize', place);
+    pill.style.opacity = '0';
+    setTimeout(() => { pill.remove(); style.remove(); }, 500);
   };
 }
 
@@ -405,8 +516,11 @@ async function main(show) {
 
   // The app sets the rate, not the display: elapsed time is banked and steps
   // are taken as they fall due.
+  // `data-steps` on the canvas is how many steps the ride has taken as of the
+  // frame it shows, so tools/web_shots.mjs can hold that frame to `?step=N`'s.
   let owed = 0;
   let last = performance.now();
+  let ridden = 0;
   const tick = (now) => {
     const gap = now - last;
     owed = Math.min(owed + gap, stepMs * CATCH_UP);
@@ -415,7 +529,11 @@ async function main(show) {
     const stepStart = performance.now();
     while (owed >= stepMs) { step(now); owed -= stepMs; stepped++; }
     const drawStart = performance.now();
-    if (stepped) draw(now);
+    if (stepped) {
+      draw(now);
+      ridden += stepped;
+      canvas.dataset.steps = String(ridden);
+    }
     timer?.frame({
       gapMs: +gap.toFixed(1),
       steps: stepped,
@@ -452,7 +570,7 @@ async function main(show) {
     game.advance({ key_held: 0, key_struck: KEY_BIT.ArrowRight, button_held: 0, button_struck: 0, x: 0, y: 0, wheel: 0 });
   }
 
-  timer?.loaded(performance.now() - loadStart);
+  const loadMs = performance.now() - loadStart;
 
   const still = new URLSearchParams(location.search).get('step');
   if (still !== null) {
@@ -467,7 +585,28 @@ async function main(show) {
     stopped(error);
     return;
   }
-  if (still !== null) return;
+  if (still !== null) {
+    timer?.loaded(loadMs, NO_WARM_UP);
+    return;
+  }
+
+  // The still frame and the indicator reach the screen before the warm-up
+  // takes the thread. `data-phase` says which part of the start the page is
+  // in, for tools/web_shots.mjs.
+  canvas.dataset.phase = 'warming';
+  const hideWarming = showWarming(canvas);
+  await nextPaint();
+  let warm;
+  try {
+    warm = await warmUp(game, width, height);
+  } catch (error) {
+    hideWarming();
+    stopped(error);
+    return;
+  }
+  timer?.loaded(loadMs, warm);
+  hideWarming();
+  canvas.dataset.phase = 'riding';
   last = performance.now();
   requestAnimationFrame(loop);
 }

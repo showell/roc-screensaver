@@ -2,13 +2,16 @@
 -- ~/build/roc-apps/next/lanterns/, which roc-apps' dev server serves at
 -- http://143.244.172.148:9210/lanterns/.
 --
---   shale tools/web_build.shale
+--   shale tools/web_build.shale            # the release wasm, what is served
+--   shale tools/web_build.shale opt=dev    # the dev backend, for quick iteration
 --
 -- It builds the wasm host (web/platform/host.zig, against the roc checkout's
 -- builtins, with Zig 0.16 as roc-apps does), then the app's wasm with the
--- pinned Roc on the dev backend, then roc_glue.js from the platform's type
--- table with the same compiler. Everything goes to a staging folder that takes
--- the page's place only when every step passed, so a failed build leaves the
+-- pinned Roc, then roc_glue.js from the platform's type table with the same
+-- compiler. The wasm is `--opt=speed` unless `opt=dev` says otherwise: it takes
+-- some seconds longer to build and is about a third the size, and its frames
+-- are the ones the page is meant to be seen with. BUILT says which was built.
+-- Everything goes to a staging folder that takes the page's place only when every step passed, so a failed build leaves the
 -- served page as it was.
 
 const NAME = "lanterns"
@@ -29,6 +32,9 @@ function marks_of(out)
   return #find_all(out, "✗") + #find_all(out, "●")
 end
 
+local opt = arg("opt", "speed")
+if opt ~= "speed" and opt ~= "dev" then fail("web_build: opt=" .. opt .. " is neither speed (the default) nor dev") end
+
 local roc = pinned_roc()
 local staging = DEST .. ".staging"
 if exists(staging) then remove_tree(staging) end
@@ -39,13 +45,13 @@ local host = must(run({real("zig016:zig"), "build", "-Droc=" .. real("repos:roc"
   {cwd = "web", timeout_ms = 300000, tail = 30}))
 print("host: " .. host.ms .. " ms")
 
-local wasm = run({roc, "build", "web.roc", "--target=wasm32", "--opt=dev", "--output=" .. real(staging) .. "/" .. NAME .. ".wasm"},
+local wasm = run({roc, "build", "web.roc", "--target=wasm32", "--opt=" .. opt, "--output=" .. real(staging) .. "/" .. NAME .. ".wasm"},
   {cwd = "screensavers/" .. NAME, timeout_ms = 300000, tail = 60})
 if marks_of(wasm.out) > 0 or not exists(staging .. "/" .. NAME .. ".wasm") then
   print(wasm.out)
   fail("web_build: the wasm build failed")
 end
-print("wasm: " .. wasm.ms .. " ms, " .. stat(staging .. "/" .. NAME .. ".wasm").size .. " bytes")
+print("wasm (opt " .. opt .. "): " .. wasm.ms .. " ms, " .. stat(staging .. "/" .. NAME .. ".wasm").size .. " bytes")
 
 local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), "web/platform/main.roc"},
   {timeout_ms = 120000, tail = 30}))
@@ -55,7 +61,7 @@ print("glue: " .. glue.ms .. " ms")
 copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
 copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
 copy("screensavers/" .. NAME .. "/page.html", staging .. "/index.html")
-create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt dev\n")
+create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n")
 
 if exists(DEST) then remove_tree(DEST) end
 copy(staging, DEST)

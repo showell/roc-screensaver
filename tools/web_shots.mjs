@@ -1,7 +1,10 @@
 // web_shots.mjs loads a built screensaver page in headless Chromium and saves
 // screenshots of it at a few times after its first painted frame, so a run can
 // be seen playing. It exits non-zero on a console error, an exception, a
-// failed request or a canvas that never paints.
+// failed request or a canvas that never paints. A moving page must also start
+// still on its first frame under the runner's warming-up indicator, keep that
+// frame until its ride starts, and have dropped the indicator by every shot.
+// The runner's own console lines (`?timing=1`) are printed as they come.
 //
 //   node tools/web_shots.mjs <page url> <shots folder> <ms after first paint>...
 //   node tools/web_shots.mjs <page url> <shots folder> step=<N>...
@@ -88,6 +91,56 @@ const FIRST_PAINT = `(async () => {
   return { missing: true };
 })()`;
 
+// A hash of every 13th pixel of the page's canvas, defined on the page.
+const CANVAS_HASH = `window.__canvasHash = () => {
+  const canvas = document.querySelector('canvas');
+  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  let hash = 0;
+  for (let at = 0; at < data.length; at += 4 * 13) hash = (hash * 31 + data[at] + (data[at + 1] << 8) + (data[at + 2] << 16)) | 0;
+  return hash;
+}; window.__canvasHash()`;
+
+// Watches the start of a moving page, from its first painted frame: the
+// warming-up indicator must be over it, and the canvas must hold the first
+// frame (`?step=0`'s, whose hash is `first`), sampled every 15 ms, until the
+// page says the ride has started. The first frame is the still page's rather
+// than this one's, since by the first sample the warm-up has been running for
+// a while and could already have changed the canvas. Then it waits for the
+// ride's first drawn frame and answers its hash with the steps it shows
+// (`data-steps`), read in one turn of the page, so the two agree.
+const warmUpWatch = (first) => `(async () => {
+  const canvas = document.querySelector('canvas');
+  const sample = window.__canvasHash;
+  const indicator = document.getElementById('warming-indicator') !== null;
+  const phaseAtFirst = canvas.dataset.phase ?? 'none';
+  const started = performance.now();
+  let samples = 0;
+  let changed = 0;
+  const seen = [];
+  while (canvas.dataset.phase === 'warming' && performance.now() - started < 5000) {
+    const now = sample();
+    if (now !== ${first}) { changed++; seen.push(now); }
+    samples++;
+    await new Promise((later) => setTimeout(later, 15));
+  }
+  const ms = performance.now() - started;
+  let ride = null;
+  while (ride === null && performance.now() - started < 8000) {
+    if (canvas.dataset.steps !== undefined) ride = { hash: sample(), steps: Number(canvas.dataset.steps) };
+    else await new Promise((later) => setTimeout(later, 4));
+  }
+  return { indicator, phaseAtFirst, samples, changed, seen, ride, phase: canvas.dataset.phase ?? 'none', ms };
+})()`;
+
+// The page's address with `?step=N` added to whatever query it has (`?timing=1`).
+function atStep(step) {
+  const address = new URL(url);
+  address.searchParams.set("step", String(step));
+  return address.href;
+}
+
+const INDICATOR_UP = "document.getElementById('warming-indicator') !== null";
+
 async function evaluate(page, expression) {
   const { result, exceptionDetails } = await page.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, page.session);
   if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
@@ -105,6 +158,7 @@ try {
   link.on("Runtime.exceptionThrown", ({ exceptionDetails }) => failures.push(`exception: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`));
   link.on("Runtime.consoleAPICalled", ({ type, args }) => {
     if (type === "error" || type === "warning") failures.push(`console ${type}: ${args.map((a) => a.value ?? a.description).join(" ")}`);
+    if (type === "log" && String(args[0]?.value).startsWith("canvas_app_runner:")) console.log(args[0].value);
   });
   link.on("Network.responseReceived", ({ response }) => { if (response.status >= 400) failures.push(`${response.status} for ${response.url}`); });
   link.on("Network.loadingFailed", ({ canceled, errorText }) => { if (!canceled) failures.push(`a request failed: ${errorText}`); });
@@ -114,7 +168,7 @@ try {
   const steps = times.filter((t) => t.startsWith("step="));
   for (const step of steps.map((t) => Number(t.slice(5)))) {
     const shown = new Promise((done) => link.on("Page.loadEventFired", done));
-    await page.send("Page.navigate", { url: `${url}?step=${step}` }, page.session);
+    await page.send("Page.navigate", { url: atStep(step) }, page.session);
     await shown;
     const still = await evaluate(page, FIRST_PAINT);
     if (still.missing) { failures.push(`step ${step}: the canvas never painted`); continue; }
@@ -124,10 +178,20 @@ try {
     writeFileSync(path, Buffer.from(data, "base64"));
     console.log(`shot ${path}, the canvas ${box.width} by ${box.height}`);
   }
+  const moving = steps.length < times.length;
+  let firstFrame = null;
+  let rideFrame = null;
+  if (moving) {
+    const still = new Promise((done) => link.on("Page.loadEventFired", done));
+    await page.send("Page.navigate", { url: atStep(0) }, page.session);
+    await still;
+    if ((await evaluate(page, FIRST_PAINT)).missing) failures.push("step 0: the canvas never painted");
+    else firstFrame = await evaluate(page, CANVAS_HASH);
+  }
   const loaded = new Promise((done) => link.on("Page.loadEventFired", done));
   await page.send("Page.navigate", { url }, page.session);
   await loaded;
-  const first = steps.length === times.length ? { skipped: true } : await evaluate(page, FIRST_PAINT);
+  const first = moving ? await evaluate(page, FIRST_PAINT) : { skipped: true };
   if (first.skipped) {
     // Only stills were asked for.
   } else if (first.missing) {
@@ -136,14 +200,43 @@ try {
     const navStart = await evaluate(page, "performance.timeOrigin + 0");
     console.log(`first painted frame ${Math.round(first.painted)} ms after navigation, ${first.colours} colours sampled (origin ${Math.round(navStart)})`);
     const shotStart = Date.now();
+    const atFirstPaint = await evaluate(page, CANVAS_HASH);
+    const warm = await evaluate(page, warmUpWatch(firstFrame));
+    if (atFirstPaint !== firstFrame) { warm.changed++; }
+    warm.samples++;
+    console.log(
+      `warm-up: indicator ${warm.indicator ? "over" : "missing from"} the first frame, phase ${warm.phaseAtFirst}; ` +
+        `the canvas changed in ${warm.changed} of ${warm.samples} samples; phase ${warm.phase} after ${Math.round(warm.ms)} ms`,
+    );
+    if (!warm.indicator || warm.phaseAtFirst !== "warming") failures.push("the first frame was not shown warming up under its indicator");
+    if (warm.changed > 0) failures.push(`the canvas changed during the warm-up, in ${warm.changed} of ${warm.samples} samples`);
+    if (warm.phase !== "riding") failures.push(`the ride never started: phase ${warm.phase} after ${Math.round(warm.ms)} ms`);
+    if (warm.changed > 0) console.log(`warm-up: first frame ${firstFrame}, seen ${warm.seen.join(" ")}`);
+    if (warm.ride === null) failures.push("the ride never drew a frame");
+    else rideFrame = warm.ride;
     for (const at of times.filter((t) => !t.startsWith("step=")).map(Number)) {
       const wait = at - (Date.now() - shotStart);
       if (wait > 0) await sleep(wait);
+      // A shot with the indicator in it differs from one without, so two
+      // shots could differ on a page that never moved.
+      if (await evaluate(page, INDICATOR_UP)) failures.push(`the warming-up indicator is still up at ${at} ms`);
       const { data } = await page.send("Page.captureScreenshot", { format: "png" }, page.session);
       const path = join(shots, `at_${String(at).padStart(5, "0")}ms.png`);
       writeFileSync(path, Buffer.from(data, "base64"));
       console.log(`shot ${path} at ${Date.now() - shotStart} ms after first paint`);
     }
+  }
+  // The ride's first frame must be the still page's at the same step, which it
+  // is only when the warm-up left the model where the still frame showed it.
+  if (rideFrame !== null) {
+    const still = new Promise((done) => link.on("Page.loadEventFired", done));
+    await page.send("Page.navigate", { url: atStep(rideFrame.steps) }, page.session);
+    await still;
+    const painted = await evaluate(page, FIRST_PAINT);
+    const expected = painted.missing ? null : await evaluate(page, CANVAS_HASH);
+    const same = expected === rideFrame.hash;
+    console.log(`ride: its first frame, after ${rideFrame.steps} steps, is ${same ? "" : "not "}the still page's at that step`);
+    if (!same) failures.push(`the ride's first frame, after ${rideFrame.steps} steps, is not ?step=${rideFrame.steps}'s`);
   }
   for (const failure of failures) console.log(`FAIL ${failure}`);
   exitCode = failures.length ? 1 : 0;
