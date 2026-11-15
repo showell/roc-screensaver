@@ -39,8 +39,8 @@
 --     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 8
-const roc_tests_expected = 199
-const roc_web_tests_expected = 193
+const roc_tests_expected = 219
+const roc_web_tests_expected = 213
 -- What Steve's skin puts under the lanterns' canvas, as tools/web_shots.mjs
 -- reads it off the page.
 const skin_help_expected = "skin help: Space pauses and resumes · R restarts at dawn · → skips ahead a crossing"

@@ -12,6 +12,7 @@ package
 		Brush,
 		CanvasApp,
 		ColorShade,
+		Font,
 		Fraction,
 		Input,
 		Keys,

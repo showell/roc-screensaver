@@ -20,6 +20,7 @@
 ## moves down the road at one constant speed, the bird's own pace over a leg,
 ## so the bird draws ahead of it through each flight and it catches up through
 ## each perch.
+import BannerPlane
 import Bird
 import BirdFlight
 import LampShapes
@@ -89,7 +90,10 @@ LanternsApp :: [].{
 				},
 		)
 		pools = lamps.join_map(|lamp| light_pool(camera, { lamp, day }))
-		backdrop_shapes(camera, light).concat(pools).concat(by_distance.join_map(|drawn| drawn.shapes))
+		# The plane is in the sky beyond everything by the road, so a lamp near
+		# enough to reach up to it paints over it.
+		plane = BannerPlane.shapes_at(steps)
+		backdrop_shapes(camera, light).concat(plane).concat(pools).concat(by_distance.join_map(|drawn| drawn.shapes))
 	}
 }
 
@@ -581,6 +585,69 @@ expect day_at(0) == Fraction.zero
 expect day_at(199) == Fraction.of(199.0 / 1350.0) and day_at(765) == Fraction.of(765.0 / 1350.0)
 expect day_at(cycle_steps / 2) == Fraction.of(0.5)
 expect day_at(cycle_steps - 2) < day_at(cycle_steps - 1) and day_at(cycle_steps - 1) != Fraction.whole
+
+# Through the whole cycle the banner plane, whenever it is in view, stays
+# above the top of the bird's drawing by at least 20 pixels and clear of the
+# sun's disc, on the screen's top; it is in view for 774 steps, from step 400
+# to 1173.
+expect {
+	var $model = first_model
+	var $in_view = 0
+	var $touches = 0
+	var $first_in_view = cycle_steps
+	var $last_in_view = 0
+	for _step in 0..<cycle_steps {
+		{ flight, steps_into_leg, steps } = $model.scene
+		plane_corners = BannerPlane.shapes_at(steps).join_map(|shape| Shapes.region_corners(shape) ?? crash "every part of the plane has corners")
+		if !plane_corners.is_empty() {
+			left = plane_corners.fold(1.0e9, |a, c| a.min(c.x.to_f64()))
+			right = plane_corners.fold(-1.0e9, |a, c| a.max(c.x.to_f64()))
+			top = plane_corners.fold(1.0e9, |a, c| a.min(c.y.to_f64()))
+			bottom = plane_corners.fold(-1.0e9, |a, c| a.max(c.y.to_f64()))
+			camera = camera_at(steps)
+			bird = flight.bird_instant_at(flight_stage(steps_into_leg))
+			gap = bird.location.along - camera.along()
+			bird_corners = Bird.pose_still(bird.pose).polygons().join_map(|polygon| polygon.points)
+			bird_rise = bird_corners.fold(0.0, |most, corner| most.max(corner.y))
+			bird_height = RoadCamera.size_on_screen({ height: Bird.height_metres, forward: gap }).to_f64()
+			bird_clear =
+				match camera.project(bird.location) {
+					Ok(foot) => bottom + 20.0 < foot.y.to_f64() - bird_height * bird_rise
+					Err(BehindCamera) => Bool.True
+				}
+			sun = Sunrise.light_at(day_at(steps)).sun_center
+			r = Sunrise.sun_radius.to_f64()
+			sun_clear = bottom < sun.y.to_f64() - r or top > sun.y.to_f64() + r or right < sun.x.to_f64() - r or left > sun.x.to_f64() + r
+			$in_view = $in_view + 1
+			$first_in_view = $first_in_view.min(steps)
+			$last_in_view = $last_in_view.max(steps)
+			$touches =
+				if bird_clear and sun_clear and top >= 0.0 {
+					$touches
+				} else {
+					$touches + 1
+				}
+		} else {
+			{}
+		}
+		$model = model_at_next_step($model, Input.none)
+	}
+	$touches == 0 and $in_view == 774 and $first_in_view == 400 and $last_in_view == 1173
+}
+
+# The plane is in the frame while it is in view, and a skip from before it
+# enters brings it in.
+expect {
+	plane = BannerPlane.shapes_at(700)
+	frame = LanternsApp.frame_shapes({ scene: scene_after(first_scene, 700), play: Playing })
+	plane.len() > 20 and plane.all(|shape| frame.contains(shape))
+}
+expect {
+	right = Input.none.with_key_pressed(KeyRight)
+	before = { scene: scene_after(first_scene, 380), play: Playing }
+	skipped = model_at_next_step(before, right)
+	BannerPlane.flight_at(before.scene.steps) == Coming and BannerPlane.flight_at(skipped.scene.steps) != Coming
+}
 
 # A frame draws the backdrop, the lamps, their pools and the bird.
 expect LanternsApp.frame_shapes({ scene: { flight: BirdFlight.first, steps_into_leg: 40, steps: 40 }, play: Playing }).len() > 50

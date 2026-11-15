@@ -30,6 +30,19 @@ The grass is a fresh green throughout, dusky enough at dawn for the pools to
 show on it. Then the whole model starts again from its first frame, road,
 bird, camera and sun, so every cycle is the same.
 
+Partway through, a small plane tows a banner across the sky that reads
+"Welcome to Roc!" (`BannerPlane.roc`). It is a red high-wing light aircraft,
+about 60 pixels long, flying high from left to right on a tow line, with the
+pale banner rippling behind it. Its nose comes in from the left edge at step
+400 (about 13 s), it crosses at 1.75 pixels a step, and its banner's tail
+leaves the right edge at step 1174 (about 39 s), so the sky is empty again for
+the last few seconds before the rewind. Where it is depends on the cycle's
+step alone, so R, the rewind and → move it with everything else. An expect
+holds it clear of the sun's disc and at least 20 pixels above the bird's
+drawing at every step it is in view. The banner's letters are strokes from
+`lib/Font.roc`, copied from roc-apps, since the native painter has no `Text`;
+they reach raster.zig as quads like any other shape.
+
 A viewer can steer it with three keys, which the app reads from its step's
 `Input.Snapshot`, so they work the same on the page and in the Windows dev
 window. Each acts on the step a key is struck, never while it is held:
@@ -235,7 +248,7 @@ no arguments, it is a dev window whose keys go to the app (Q or Esc quits).
   time, field by field and tag by tag.
 - `native/`: the package that runs a lib `CanvasApp` on this platform:
   `NativeApp.roc`, and `FrameOfShapes.roc`, the adapter.
-- `lib/`: the canvas apps' vocabulary (`Shapes`, `Brush`, `CanvasApp`,
+- `lib/`: the canvas apps' vocabulary (`Shapes`, `Brush`, `Font`, `CanvasApp`,
   `WasmApp`), copied from roc-apps, and `Skin`, the page's dressing (above).
 - `web/`: the page's wasm platform and host, `shapes_canvas.js` and
   `canvas_app_runner.js`, copied from roc-apps.
