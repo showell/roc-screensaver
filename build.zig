@@ -13,7 +13,9 @@ const std = @import("std");
 ///   zig build bench-build        the bench compiled and not run, for the gate
 ///   zig build test               the host's tests: the seam against roc glue,
 ///                                the basic example's frames painted and
-///                                freed, and the keys example's keys
+///                                freed, the keys example's keys, and
+///                                raster.zig's fast paths against its
+///                                per-pixel rule
 ///
 /// `-Dapp=<path>` names another app; the lanterns screensaver is the default.
 /// The tests link the basic example (examples/basic/), whose every shape and
@@ -62,7 +64,7 @@ pub fn build(b: *std.Build) void {
     // The gate compiles the bench without running it, so it never rots.
     b.step("bench-build", "The frame-time bench compiled, not run").dependOn(&bench_exe.step);
 
-    const tests = b.step("test", "The host's tests: the seam against roc glue, the basic example's frames painted and freed, and the keys example's keys");
+    const tests = b.step("test", "The host's tests: the seam against roc glue, the basic example's frames painted and freed, the keys example's keys, and raster.zig's fast paths");
     const basic = rocArchive(b, roc, "examples/basic/main.roc", "x64musl", "basic-x64musl.a");
     const abi_test = b.createModule(.{ .root_source_file = b.path("host/abi_test.zig"), .target = target, .optimize = optimize });
     abi_test.addObjectFile(basic);

@@ -11,7 +11,8 @@
 //! filled pixel back to design space to evaluate the gradient — identical to how the
 //! canvas evaluated user-space gradients under a rotated transform.
 //!
-//! This file is copied unchanged from angry-gopher's `games/driving/native/`; angry-gopher's own copy is the older Safari's.
+//! This file comes from angry-gopher's `games/driving/native/` and has since gained fillPoly's
+//! fast paths (its `Plan`), which angry-gopher's copy, the older Safari's, does not have.
 
 const std = @import("std");
 
