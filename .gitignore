@@ -1,0 +1,4 @@
+tools/web_shots/
+web/platform/targets/
+web/zig-out/
+web/.zig-cache/
