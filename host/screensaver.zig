@@ -53,8 +53,12 @@ pub const Screensaver = struct {
         s.model = abi.roc_step(s.model, s.frame_number);
     }
 
-    /// Paints the current model's frame into `display`.
-    pub fn paint(s: *Screensaver) !void {
+    /// The current model's frame as `raster.render` takes it. Its words are
+    /// the screensaver's own buffer, good until the next call; the frame
+    /// itself is already handed back to Roc. Only this part calls Roc, so a
+    /// host that rasterizes on other threads (host/win32.zig) calls it on
+    /// the one thread that holds the model.
+    pub fn draw(s: *Screensaver) !Drawn {
         const frame = abi.roc_frame(abi.borrow(s.model));
         s.words.clearRetainingCapacity();
         try words.write(s.gpa, &s.words, frame.shapes.items());
@@ -64,8 +68,35 @@ pub const Screensaver = struct {
             .shown => .{ .visible = true, .x = bg.sun.payload.shown.x, .y = bg.sun.payload.shown.y, .scale = bg.sun.payload.shown.scale },
         };
         abi.roc_release_frame(frame);
+        return .{ .words = s.words.items, .roll = bg.roll, .sky_top = bg.sky_top, .sky_horizon = bg.sky_horizon, .sun = sun };
+    }
+
+    /// Paints the current model's frame into `display`.
+    pub fn paint(s: *Screensaver) !void {
+        const d = try s.draw();
         const big = raster.Fb{ .px = s.big, .w = s.width * raster.SS, .h = s.height * raster.SS };
-        raster.render(big, s.words.items, bg.roll, bg.sky_top, bg.sky_horizon, sun);
+        raster.render(big, d.words, d.roll, d.sky_top, d.sky_horizon, d.sun);
         raster.downsample(big, .{ .px = s.display, .w = s.width, .h = s.height });
     }
 };
+
+/// One frame, ready for `raster.render`.
+pub const Drawn = struct {
+    words: []const u32,
+    roll: f32,
+    sky_top: u32,
+    sky_horizon: u32,
+    sun: raster.SunPos,
+};
+
+/// The FNV-1a hash of a frame's pixels. The PNG harness and the Windows
+/// headless run print it for their last frame, so the two builds can be
+/// seen drawing the same picture.
+pub fn checksum(px: []const u32) u64 {
+    var h: u64 = 0xcbf29ce484222325;
+    for (std.mem.sliceAsBytes(px)) |byte| {
+        h ^= byte;
+        h *%= 0x100000001b3;
+    }
+    return h;
+}

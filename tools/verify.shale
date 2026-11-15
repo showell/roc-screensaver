@@ -8,7 +8,12 @@
 --   zig build, which builds the example's archive and the harness
 --   zig build test, held to exactly `tests_expected` tests
 --   the PNG harness over the example: exactly `pngs_expected` PNGs, and
---     the first and last differ
+--     the first and last differ; the last one's checksum is shown, the
+--     number the Windows headless run on CI should print too
+--   zig build -Dwindows, a cross-build: the Roc builds the x64win archive
+--     and host/win32.zig compiles and links with it for x86_64-windows, as a
+--     GUI program, with a byte-identical .scr beside the .exe. It does not
+--     run the .exe (this box has no Windows); CI's workflow does
 
 const tests_expected = 5
 const pngs_expected = 8
@@ -65,4 +70,24 @@ local last = png_dir .. "/frame-00" .. (pngs_expected - 1) .. ".png"
 local differ = #pngs == pngs_expected and read(first) ~= read(last)
 local said = "the first and last differ"
 if not differ then said = "the first and last are the same" end
-line("png harness", r.code == 0 and #pngs == pngs_expected and differ, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
+local sum = re_find(r.out, "checksum ([0-9a-f]{16})")
+if sum ~= nil then said = said .. ", the last's checksum " .. sum.group end
+line("png harness", r.code == 0 and #pngs == pngs_expected and differ and sum ~= nil, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
+
+const exe = "zig-out/bin/screensaver.exe"
+const scr = "zig-out/bin/screensaver.scr"
+for p in {exe, scr} do
+  if exists(p) then remove(p) end
+end
+r = run({"zig", "build", "-Dwindows"}, {timeout_ms = 300000, tail = 40})
+if r.code ~= 0 then print(r.out) end
+local built = exists(exe) and exists(scr)
+local pe = built and sub(read(exe), 1, 2) == "MZ"
+local same = built and read(exe) == read(scr)
+local kind = "no .exe and .scr"
+if built then
+  kind = stat(exe).size .. " bytes"
+  if not pe then kind = kind .. ", not a PE file" end
+  if not same then kind = kind .. ", the .scr differs" end
+end
+line("zig build -Dwindows", r.code == 0 and pe and same, kind, r.ms)

@@ -1,0 +1,58 @@
+# Build the Windows screensaver on a hosted Windows runner, run it headless,
+# and upload screensaver.exe and screensaver.scr as one artifact. Run by hand:
+#
+#   gh workflow run windows.yml
+#   gh run download <run-id> -n windows-screensaver
+#
+# The build itself is build.zig's (`zig build -Dwindows`); this file only
+# checks the repo out and installs the tools. The Roc is the nightly in
+# roc-version, which build.zig also refuses to build without. The tool steps,
+# with their pinned action SHAs, follow roc-apps' Windows workflow.
+name: Windows screensaver
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the Roc pin
+        id: pin
+        run: echo "roc=$(cat roc-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Zig
+        uses: xyzzylabs/setup-zig@09d85d9dbb73308882e7a26e61a8f706eed40df1 # v1.0.2, on Node 24
+        with:
+          version: 0.17.0
+
+      - name: Install Roc
+        uses: roc-lang/setup-roc@cbe782d6f165b89c87d99f50a59ac4f5f73b4427
+        with:
+          version: nightly-new-compiler
+          nightly-tag: ${{ steps.pin.outputs.roc }}
+
+      - name: Build
+        run: zig build -Dwindows --summary all
+
+      # No window: the .exe draws the PNG harness's frames through its raster
+      # workers and prints the last one's checksum, so this proves it links,
+      # loads and draws.
+      - name: Run it headless
+        run: zig build -Dwindows headless
+
+      - name: Upload the screensaver
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-screensaver
+          path: |
+            zig-out/bin/screensaver.exe
+            zig-out/bin/screensaver.scr
+          if-no-files-found: error

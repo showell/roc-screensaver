@@ -4,7 +4,8 @@
 //! seen working without a window.
 
 const std = @import("std");
-const Screensaver = @import("screensaver.zig").Screensaver;
+const screensaver = @import("screensaver.zig");
+const Screensaver = screensaver.Screensaver;
 const png = @import("png.zig");
 
 pub const frames_written = 8;
@@ -32,5 +33,5 @@ pub fn main(init: std.process.Init) !void {
         const path = try std.fmt.allocPrint(a, "{s}/frame-{d:0>3}.png", .{ dir, k });
         try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
     }
-    std.debug.print("png: {d} frames of {d} by {d} in {s}\n", .{ frames_written, s.width, s.height, dir });
+    std.debug.print("png: {d} frames of {d} by {d} in {s}; the last's checksum {x:0>16}\n", .{ frames_written, s.width, s.height, dir, screensaver.checksum(s.display) });
 }

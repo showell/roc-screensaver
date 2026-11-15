@@ -8,10 +8,16 @@ memory, and paints it with a software rasterizer copied from angry-gopher.
 
 ## Status (2026-11-15)
 
-A first spike, Linux only. The example app builds, its frames are painted
+A first spike. On Linux the example app builds, its frames are painted
 headlessly as PNGs, the host's view of the frame is held to `roc glue`'s,
-and every allocation Roc makes is shown freed. There is no window yet and
-no Windows build; the frame type is likely to move as a real app uses it.
+and every allocation Roc makes is shown freed. There is no Linux window.
+
+On Windows the example builds as a screensaver (`.exe` and `.scr`), on
+GitHub Actions and, it seems, from this Linux box too: the x64win archive
+links with zig's mingw target and no SDK. CI runs it headless; nobody has
+yet watched it as a real screensaver, so the window, preview and
+fullscreen modes are untested beyond compiling. The frame type is likely
+to move as a real app uses it.
 
 ## Before you build
 
@@ -26,10 +32,17 @@ no Windows build; the frame type is likely to move as a real app uses it.
     zig build                   # the example's archive (roc build, dev backend), then the harness
     zig build png -- out/basic  # the example's first 8 frames, out/basic/frame-000.png ...
     zig build test              # the seam against roc glue; the example's frames painted and freed
+    zig build -Dwindows         # zig-out/bin/screensaver.exe and screensaver.scr (x86_64-windows)
+    zig build -Dwindows headless  # on Windows: the .exe with no window, the last frame's checksum
     shale tools/verify.shale    # the gate: every check, a line each
     shale tools/glue.shale      # after a change to platform/: roc glue's snapshot again
 
 `-Dapp=<path to main.roc>` builds another app in place of the example.
+
+The Windows build runs on GitHub Actions by hand: `gh workflow run
+windows.yml`, then `gh run download <run-id> -n windows-screensaver`.
+To install it, right-click `screensaver.scr` and choose Install; run with
+no arguments, it is a dev window (Space pauses, Q or Esc quits).
 
 ## Layout
 
@@ -47,6 +60,13 @@ no Windows build; the frame type is likely to move as a real app uses it.
   draw-command words.
 - `host/screensaver.zig`: the model held and stepped, each frame painted.
 - `host/png_main.zig`: the headless harness behind `zig build png`.
+- `host/win32.zig`: the Windows screensaver: its `.scr` modes (`/s`
+  fullscreen, `/p <hwnd>` preview, `/c` config, no arguments a dev
+  window), and `--headless=<N>` for CI. The main thread alone calls Roc,
+  taking each frame's words; two workers rasterize them. Copied from
+  angry-gopher's `games/driving/native/`, whose top comment it keeps.
+- `.github/workflows/windows.yml`: the Windows build on a hosted runner,
+  run by hand.
 - `host/raster.zig`, `host/png.zig`: the rasterizer and the PNG encoder,
   copied unchanged from angry-gopher's `games/driving/native/`.
 - `host/glue/platform_abi.zig`: `roc glue`'s output for the platform,

@@ -40,6 +40,10 @@ platform ""
 			inputs: [app],
 			output: Archive,
 		},
+		x64win: {
+			inputs: [app],
+			output: Archive,
+		},
 	}
 
 import Frame
