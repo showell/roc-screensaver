@@ -67,8 +67,10 @@ fn rocArchive(b: *std.Build, roc: []const u8, app_root: []const u8, roc_target: 
 fn buildWindows(b: *std.Build, app: std.Build.LazyPath, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) void {
     const exe = withApp(b, "screensaver", "host/win32.zig", app, target, optimize);
     exe.subsystem = .windows;
-    exe.root_module.linkSystemLibrary("user32", .{});
-    exe.root_module.linkSystemLibrary("gdi32", .{});
+    // No pkg-config: the import libraries are zig's, and on the Windows
+    // runner a pkg-config from Strawberry Perl answers with errors.
+    exe.root_module.linkSystemLibrary("user32", .{ .use_pkg_config = .no });
+    exe.root_module.linkSystemLibrary("gdi32", .{ .use_pkg_config = .no });
     b.installArtifact(exe);
     b.getInstallStep().dependOn(&b.addInstallFileWithDir(exe.getEmittedBin(), .bin, "screensaver.scr").step);
 
