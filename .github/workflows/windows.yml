@@ -4,7 +4,7 @@
 #   gh workflow run windows.yml
 #   gh run download <run-id> -n windows-screensaver
 #
-# The build itself is build.zig's (`zig build -Dwindows`); this file only
+# The build itself is build.zig's (`zig build -Dwindows`, ReleaseFast); this file only
 # checks the repo out and installs the tools. The Roc is the nightly in
 # roc-version, which build.zig also refuses to build without. The tool steps,
 # with their pinned action SHAs, follow roc-apps' Windows workflow.
@@ -44,9 +44,14 @@ jobs:
 
       # No window: the .exe draws the PNG harness's frames through its raster
       # workers and prints the last one's checksum, so this proves it links,
-      # loads and draws.
+      # loads and draws, and draws what the PNG harness draws on Linux: the
+      # checksum is tools/verify.shale's `last_checksum`, moved with it. The
+      # build is the shipped one, ReleaseFast (build.zig's default for
+      # -Dwindows).
       - name: Run it headless
-        run: zig build -Dwindows headless
+        run: |
+          zig build -Dwindows headless 2>&1 | tee headless.txt
+          grep -q "checksum a153a4366764142f$" headless.txt
 
       - name: Upload the screensaver
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

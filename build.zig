@@ -10,6 +10,7 @@ const std = @import("std");
 ///   zig build bench -Doptimize=ReleaseFast
 ///                                one cycle's frame times, by phase, and
 ///                                through win32.zig's two-worker pipeline
+///   zig build bench-build        the bench compiled and not run, for the gate
 ///   zig build test               the host's tests: the seam against roc glue,
 ///                                the basic example's frames painted and
 ///                                freed, and the keys example's keys
@@ -23,21 +24,25 @@ const std = @import("std");
 /// Roc's x64win archive), from any host:
 ///
 ///   zig build -Dwindows            zig-out/bin/screensaver.exe and a
-///                                  byte-identical screensaver.scr
+///                                  byte-identical screensaver.scr, built
+///                                  ReleaseFast unless -Doptimize says else
 ///   zig build -Dwindows headless   runs the .exe with no window, where the
 ///                                  host runs Windows programs
 pub fn build(b: *std.Build) void {
-    const optimize = b.standardOptimizeOption(.{});
     const app_root = b.option([]const u8, "app", "The app's main.roc (screensavers/lanterns/main.roc)") orelse "screensavers/lanterns/main.roc";
     const windows = b.option(bool, "windows", "Build the Windows screensaver (x86_64-windows) in place of the Linux programs") orelse false;
     const roc = rocCompiler(b);
 
     if (windows) {
+        // The Windows build is what ships, and a Debug raster is about 3.5
+        // times slower, so it is optimized unless -Doptimize says otherwise.
+        const optimize = b.option(std.lang.Optimize, "optimize", "Prioritize performance, safety, or binary size (ReleaseFast unless named)") orelse .fast;
         const win_target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu });
         buildWindows(b, rocArchive(b, roc, app_root, "x64win", "app-x64win.lib"), win_target, optimize);
         return;
     }
 
+    const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
     const app = rocArchive(b, roc, app_root, "x64musl", "app-x64musl.a");
 
@@ -49,10 +54,13 @@ pub fn build(b: *std.Build) void {
     b.step("png", "The headless harness: -- <out dir> [step ...], the app's frames as PNGs").dependOn(&png.step);
 
     // Built only for its own step, so `zig build` stays as quick as it was.
-    const bench = b.addRunArtifact(withApp(b, "bench", "host/bench_main.zig", app, target, optimize));
+    const bench_exe = withApp(b, "bench", "host/bench_main.zig", app, target, optimize);
+    const bench = b.addRunArtifact(bench_exe);
     bench.stdio = .inherit;
     bench.has_side_effects = true;
     b.step("bench", "The frame-time bench: one cycle's frames timed by phase, then win32's pipeline (with -Doptimize=ReleaseFast, as Windows builds)").dependOn(&bench.step);
+    // The gate compiles the bench without running it, so it never rots.
+    b.step("bench-build", "The frame-time bench compiled, not run").dependOn(&bench_exe.step);
 
     const tests = b.step("test", "The host's tests: the seam against roc glue, the basic example's frames painted and freed, and the keys example's keys");
     const basic = rocArchive(b, roc, "examples/basic/main.roc", "x64musl", "basic-x64musl.a");

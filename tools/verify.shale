@@ -15,14 +15,16 @@
 --     lib's Skin among them
 --   zig fmt --check over build.zig and host/
 --   zig build, which builds the example's archive and the harness
+--   zig build bench-build, the frame-time bench compiled and not run
 --   zig build test, held to exactly `tests_expected` tests
 --   the PNG harness over the lanterns screensaver: exactly `pngs_expected`
 --     PNGs, the first and last differ, and the last one's checksum is
 --     `last_checksum`, the number the Windows headless run on CI prints too
 --   zig build -Dwindows, a cross-build: the Roc builds the x64win archive
 --     and host/win32.zig compiles and links with it for x86_64-windows, as a
---     GUI program, with a byte-identical .scr beside the .exe. It does not
---     run the .exe (this box has no Windows); CI's workflow does
+--     GUI program, ReleaseFast as it ships, with a byte-identical .scr beside
+--     the .exe. It does not run the .exe (this box has no Windows); CI's
+--     workflow does, and holds its checksum to `last_checksum`
 --   tools/web_build.shale, the lanterns page built into the dev channel's
 --     `dest` folder (lanterns unless named) as it is served, the release (`--opt=speed`) wasm, held to the files it
 --     serves and to BUILT saying `opt speed`
@@ -48,7 +50,8 @@ const skin_help_expected = "skin help: Space pauses and resumes · R restarts at
 const skin_links_expected = "skin links: Home https://roc.lynrummy.com in a new tab, Code https://github.com/showell/roc-screensaver in a new tab"
 const pngs_expected = 8
 -- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
--- to the scene, the adapter or the rasterizer moves it, in the same commit.
+-- to the scene, the adapter or the rasterizer moves it, in the same commit,
+-- here and in .github/workflows/windows.yml's headless step.
 const last_checksum = "a153a4366764142f"
 const png_dir = ".zig-cache/verify-png"
 
@@ -103,6 +106,10 @@ line("zig fmt --check", r.code == 0, #glob("host/**/*.zig") + 1 .. " files", r.m
 r = run({"zig", "build"}, {timeout_ms = 300000, tail = 40})
 if r.code ~= 0 then print(r.out) end
 line("zig build", r.code == 0, "exit " .. r.code, r.ms)
+
+r = run({"zig", "build", "bench-build"}, {timeout_ms = 300000, tail = 40})
+if r.code ~= 0 then print(r.out) end
+line("zig build bench-build", r.code == 0, "host/bench_main.zig compiles, exit " .. r.code, r.ms)
 
 r = run({"zig", "build", "test", "--summary", "all"}, {timeout_ms = 300000, tail = 40})
 local counts = re_find(r.out, "(\\d+)/(\\d+) tests passed")
