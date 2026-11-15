@@ -1,9 +1,11 @@
 ## LanternsApp is the screensaver as a value a runner can play: the Roc bird
-## hopping from lamp to lamp down a road at dusk that never ends, with the
-## camera following it. Each lamp throws a pool of light on the road, and the
-## sun sets behind the mountains over forty of the bird's crossings; once it is
-## hidden the scene holds for a perch, then starts again from its first frame,
-## so the cycle repeats exactly. It needs no input.
+## hopping from lamp to lamp down a road that never ends, at sunrise, with the
+## camera following it. It is made for Roc's 0.1.0 launch. Each lamp throws a
+## pool of light on the road; the cycle opens at dawn with the sun behind the
+## mountains, the sun peeks over them after three of the bird's crossings and
+## climbs on, and the scene brightens all the way to the cycle's end, thirteen
+## crossings and a perch later, when it starts again from its first frame, so
+## the cycle repeats exactly. It needs no input.
 ##
 ## The model is one flight, how many steps into it the screensaver is, and how
 ## many steps into the cycle, so it stays the same size however long it plays.
@@ -18,7 +20,7 @@ import LampShapes
 import RoadCamera
 import RoadLamps
 import StillOnScreen
-import Sunset
+import Sunrise
 import lib.Brush
 import lib.CanvasApp
 import lib.Fraction
@@ -48,13 +50,13 @@ LanternsApp :: [].{
 	frame_shapes : LanternsApp.Model -> List(Shapes.Shape)
 	frame_shapes = |{ flight, steps_into_leg, steps }| {
 		camera = camera_at(steps)
-		dusk = dusk_at(steps)
-		light = Sunset.light_at(dusk)
+		day = day_at(steps)
+		light = Sunrise.light_at(day)
 		lamps = RoadLamps.lamps_between({
 			nearest: camera.along() + RoadCamera.near_plane,
 			farthest: camera.along() + view_depth,
 		})
-		drawn_lamps = lamps.keep_oks(|lamp| drawn_lamp(camera, { lamp, dusk }))
+		drawn_lamps = lamps.keep_oks(|lamp| drawn_lamp(camera, { lamp, day }))
 		bird = flight.bird_instant_at(flight_stage(steps_into_leg))
 		drawn_bird = drawn_bird_of(camera, { bird, flight })
 		# Farthest first, so a nearer thing paints over a farther one.
@@ -68,7 +70,7 @@ LanternsApp :: [].{
 					Same
 				},
 		)
-		pools = lamps.join_map(|lamp| light_pool(camera, { lamp, dusk }))
+		pools = lamps.join_map(|lamp| light_pool(camera, { lamp, day }))
 		backdrop_shapes(camera, light).concat(pools).concat(by_distance.join_map(|drawn| drawn.shapes))
 	}
 }
@@ -81,32 +83,30 @@ perch_steps = 30
 leg_steps : U64
 leg_steps = perch_steps + BirdFlight.frame_count
 
-## The sun sets over this many crossings, a leg each.
-setting_crossings : U64
-setting_crossings = 40
+## The cycle runs over this many whole crossings, a leg each: about 30 s, short
+## enough to watch it come round, long enough that the rise is not rushed.
+rising_crossings : U64
+rising_crossings = 13
 
-## How many steps the sun takes to set.
-setting_steps : U64
-setting_steps = setting_crossings * leg_steps
+## How many steps the cycle takes past its crossings: one perch, so the bird
+## sits on its lamp at the end and the scene starts again just as it would
+## take off.
+closing_perch_steps : U64
+closing_perch_steps = perch_steps
 
-## How many steps the scene holds once the sun is hidden before it starts
-## again: one perch, so the bird sits on its lamp through the hold and the
-## scene starts again just as it would take off.
-hold_steps : U64
-hold_steps = perch_steps
-
-## How many steps the whole cycle takes: the setting, then the hold.
+## How many steps the whole cycle takes: the crossings, then the closing perch.
 cycle_steps : U64
-cycle_steps = setting_steps + hold_steps
+cycle_steps = rising_crossings * leg_steps + closing_perch_steps
 
 ## The model the screensaver starts from, and starts again from each cycle.
 first_model : LanternsApp.Model
 first_model = { flight: BirdFlight.first, steps_into_leg: 0, steps: 0 }
 
-## How near dusk it is `steps` into the cycle: from 0 at the start to 1 as the
-## setting ends, and 1 through the hold.
-dusk_at : U64 -> Fraction
-dusk_at = |steps| Fraction.clamp(steps.to_f64() / setting_steps.to_f64())
+## How far into the day it is `steps` into the cycle: 0 at dawn as the cycle
+## starts, then a little more at every step to the last, so the scene never
+## stops brightening before it starts again.
+day_at : U64 -> Fraction
+day_at = |steps| Fraction.clamp(steps.to_f64() / cycle_steps.to_f64())
 
 ## How far the camera moves down the road each step: one lamp spacing a leg,
 ## which is the bird's pace, since every flight is one place on.
@@ -156,12 +156,12 @@ camera_at = |steps| RoadCamera.at({ along: RoadLamps.even_along(0) - follow_dist
 Drawn : { forward : F64, shapes : List(Shapes.Shape) }
 
 ## A lamp on the screen, if it is in front of the camera.
-drawn_lamp : RoadCamera, { lamp : RoadLamps.RoadLamp, dusk : Fraction } -> Try(Drawn, [BehindCamera])
-drawn_lamp = |camera, { lamp, dusk }| {
+drawn_lamp : RoadCamera, { lamp : RoadLamps.RoadLamp, day : Fraction } -> Try(Drawn, [BehindCamera])
+drawn_lamp = |camera, { lamp, day }| {
 	foot = camera.project({ along: lamp.along, across: lamp.across, lift: 0.0 })?
 	forward = camera.forward_of(lamp.along)
 	height_on_screen = RoadCamera.size_on_screen({ height: lamp.lantern.height_metres(), forward })
-	Ok({ forward, shapes: LampShapes.lamp_shapes({ foot, height_on_screen }, { lantern: lamp.lantern, dusk }) })
+	Ok({ forward, shapes: LampShapes.lamp_shapes({ foot, height_on_screen }, { lantern: lamp.lantern, day }) })
 }
 
 ## The bird on the screen, if it is in front of the camera, as a list of none
@@ -194,10 +194,10 @@ pool_radius = 3.2
 
 ## The pool of light a lamp throws on the ground: the circle round its foot,
 ## seen through the camera, lit brightest at the foot and fading to nothing at
-## its edge, and a little stronger as `dusk` nears 1. None for a pool any of
+## its edge, strongest at dawn and fainter as the day comes up. None for a pool any of
 ## whose edge is behind the camera.
-light_pool : RoadCamera, { lamp : RoadLamps.RoadLamp, dusk : Fraction } -> List(Shapes.Shape)
-light_pool = |camera, { lamp, dusk }| {
+light_pool : RoadCamera, { lamp : RoadLamps.RoadLamp, day : Fraction } -> List(Shapes.Shape)
+light_pool = |camera, { lamp, day }| {
 	sides = 20
 	var $corners = List.with_capacity(sides)
 	for k in 0..<sides {
@@ -226,7 +226,7 @@ light_pool = |camera, { lamp, dusk }| {
 		glow = lamp.lantern.glow_color()
 		look = {
 			stops: {
-				start_color: Brush.with_alpha(glow, 0.42 + 0.14 * dusk.to_f64()),
+				start_color: Brush.with_alpha(glow, 0.56 - 0.24 * day.to_f64()),
 				end_color: Brush.with_alpha(glow, 0.0),
 				start_offset: 0.0,
 				end_offset: 1.0,
@@ -262,10 +262,10 @@ near_hills = [
 	Point.at(0.0, RoadCamera.horizon_y + 1.0),
 ]
 
-## The sky, the sun and its glow, the far range the sun sets behind, the hills,
+## The sky, the sun and its glow, the far range the sun rises from, the hills,
 ## the grass, the road to the horizon, and the dashes down its middle, all in
 ## the cycle's `light`.
-backdrop_shapes : RoadCamera, Sunset.Light -> List(Shapes.Shape)
+backdrop_shapes : RoadCamera, Sunrise.Light -> List(Shapes.Shape)
 backdrop_shapes = |camera, light| {
 	sky = Shapes.rectangle({
 		top_left: Point.at(0.0, 0.0),
@@ -286,17 +286,17 @@ backdrop_shapes = |camera, light| {
 	sun_glow = Shapes.halo({ center: sun_center, radius: Pixels.of(300.0) }, Brush.with_alpha(light.sun_glow, light.sun_glow_alpha))
 	sun = Disc({
 		center: sun_center,
-		radius: Sunset.sun_radius,
+		radius: Sunrise.sun_radius,
 		fill: Radial({
 			inner_color: Brush.opaque_rgba(light.sun_inner),
 			outer_color: Brush.opaque_rgba(light.sun_outer),
 			center: sun_center,
 			inner_radius: Pixels.zero,
-			outer_radius: Sunset.sun_radius,
+			outer_radius: Sunrise.sun_radius,
 		}),
 	})
 	# The far range is drawn over the sun, so the sun goes down behind its ridge.
-	far = Polygon({ corners: Sunset.far_range, fill: Brush.corners_shade(Sunset.far_range, { color: light.far_range, strength: Fraction.of(0.6) }) })
+	far = Polygon({ corners: Sunrise.far_range, fill: Brush.corners_shade(Sunrise.far_range, { color: light.far_range, strength: Fraction.of(0.6) }) })
 	near_fill = Brush.corners_shade(near_hills, { color: light.hills, strength: Fraction.of(0.8) })
 	hills = Polygon({ corners: near_hills, fill: near_fill })
 	grass = Shapes.rectangle({
@@ -415,9 +415,9 @@ expect (camera_at(leg_steps).along() - camera_at(0).along() - RoadLamps.lamp_spa
 expect (camera_at(2 * leg_steps).along() - camera_at(leg_steps).along() - RoadLamps.lamp_spacing).abs() < 1.0e-9
 expect camera_at(0).along() == RoadLamps.even_along(0) - follow_distance
 
-# The cycle is forty legs of setting and a perch's hold, and it starts again
-# from the first model on its last step and not a step before.
-expect cycle_steps == 40 * 66 + 30
+# The cycle is thirteen legs and a closing perch, and it starts again from the
+# first model on its last step and not a step before.
+expect cycle_steps == 13 * 66 + 30
 expect {
 	last = { flight: BirdFlight.first, steps_into_leg: 29, steps: cycle_steps - 1 }
 	model_at_next_step(last, Input.none) == first_model
@@ -428,11 +428,10 @@ expect {
 	after.steps == cycle_steps - 1 and after.steps_into_leg == 29
 }
 
-# Dusk runs from 0 to 1 over the setting and stays at 1 through the hold.
-expect dusk_at(0) == Fraction.zero
-expect dusk_at(setting_steps / 2) == Fraction.of(0.5)
-expect dusk_at(setting_steps - 1) != Fraction.whole
-expect dusk_at(setting_steps) == Fraction.whole and dusk_at(cycle_steps - 1) == Fraction.whole
+# The day runs from 0 at dawn and grows at every step, up to the last.
+expect day_at(0) == Fraction.zero
+expect day_at(cycle_steps / 2) == Fraction.of(0.5)
+expect day_at(cycle_steps - 2) < day_at(cycle_steps - 1) and day_at(cycle_steps - 1) != Fraction.whole
 
 # A frame draws the backdrop, the lamps, their pools and the bird.
 expect LanternsApp.frame_shapes({ flight: BirdFlight.first, steps_into_leg: 40, steps: 40 }).len() > 50

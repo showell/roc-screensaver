@@ -8,22 +8,27 @@ memory, and paints it with a software rasterizer copied from angry-gopher.
 
 ## The lanterns screensaver
 
-`screensavers/lanterns/` is the screensaver: the Roc bird, Safari's bird and
-flight, hopping from lamp to lamp down an endless road at an early dusk,
-crossing it each way in turn, each hop one lamp further on. The camera
+`screensavers/lanterns/` is the screensaver, a sunrise made for Roc's 0.1.0
+launch: the Roc bird, Safari's bird and flight, hopping from lamp to lamp
+down an endless road as the sun comes up, crossing it each way in turn, each hop one lamp further on. The camera
 moves down the road at one constant speed, the bird's pace over a leg, so the
 bird draws ahead through each flight and the camera catches up through each
 perch. The lamps, their halos and the pools of light they throw on the road
 are its own; the bird is drawn at 4.2 m, nearly twice Safari's 2.2, in every
 pose.
 
-The scene runs in a cycle (`Sunset.roc`, and the counts in `LanternsApp.roc`).
-The sun goes down a straight path over forty crossings (40 legs of 66 steps,
-2640 steps, about 88 seconds) and sets behind the far range's ridge, which is
-drawn over it; the sky, the land and the road ease toward dusk with it, and
-the lamps' halos and pools grow a little stronger. Once the sun is hidden the
-scene holds for one perch (30 steps), then the whole model starts again from
-its first frame, road, bird, camera and sun, so every cycle is the same.
+The scene runs in a cycle (`Sunrise.roc`, and the counts in
+`LanternsApp.roc`) of thirteen crossings and a closing perch: 13 legs of 66
+steps and 30 more, 888 steps, about 30 seconds. It opens at dawn with the sun
+hidden behind the far range's ridge, which is drawn over it, in the notch at
+its lowest point; the sun climbs a straight path out of the notch, first
+peeks over the ridge at step 200, just after the third crossing, and is clear
+of it about 0.6 of the way through. The sky, the range, the hills, the grass
+and the road brighten at an even pace with it, to the last step, while the
+lamps' halos and pools, strongest at dawn, ease off (they stay faintly lit).
+The grass is a fresh green throughout, dusky enough at dawn for the pools to
+show on it. Then the whole model starts again from its first frame, road,
+bird, camera and sun, so every cycle is the same.
 
 One app value, `LanternsApp.canvas_app` (a lib `CanvasApp`), runs both ways:
 
@@ -94,10 +99,10 @@ What raster.zig cannot do, approximated or refused:
 
 ## Status (2026-11-15)
 
-The lanterns screensaver is new today, with its sunset cycle and its
+The lanterns screensaver is new today, with its sunrise cycle and its
 constant-speed camera. Its page builds into the dev channel and animates
 there, and the native PNG frames and the page's stills at the same steps
-(the first, and near the set) look the same to the eye. The Windows build compiles it; whether
+(the first, and mid-rise) look the same to the eye. The Windows build compiles it; whether
 it holds 30 frames a second as a real screensaver is untested, since its sky
 and halos are gradients over most of the screen. The basic example stays as
 the host tests' fixture.

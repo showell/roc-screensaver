@@ -33,11 +33,11 @@
 --     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 5
-const roc_tests_expected = 186
+const roc_tests_expected = 187
 const pngs_expected = 8
 -- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
 -- to the scene, the adapter or the rasterizer moves it, in the same commit.
-const last_checksum = "159292aa1e90d4e0"
+const last_checksum = "065034a82f69b4a5"
 const png_dir = ".zig-cache/verify-png"
 
 if not exists("platform/main.roc") then
