@@ -13,7 +13,7 @@
 // Reading a frame and filling a canvas is shapes_canvas.js, which this loads
 // first and which knows nothing about any of them.
 //
-//   window.SHOW = { wasm: 'snake.wasm', loading: '…', readsPointer: true }
+//   window.SHOW = { wasm: 'snake.wasm', readsPointer: true }
 //
 // A page that sets `sharp: true` keeps one canvas pixel for each pixel of the
 // screen, however the page has scaled the canvas, so its type stays crisp.
@@ -436,10 +436,17 @@ async function warmUp(game, width, height) {
 
 const NO_WARM_UP = { times: [], ms: 0, stoppedBy: 'a still page' };
 
-// A small pill near the top of the canvas, over the still frame: a soft dot
-// that breathes and two quiet words. It sits on the page, not in the canvas,
-// so the canvas holds only the app's frame.
-function showWarming(canvas) {
+// A small pill near the top of the canvas: a soft dot that breathes and two
+// quiet words. It sits on the page, not in the canvas, so the canvas holds
+// only the app's frame.
+//
+// It goes up the moment the page opens, while the wasm downloads and
+// compiles, and stays over the still frame through the warm-up, so the start
+// has one indicator rather than a loading page and then a pill. Until the
+// canvas exists it sits where the canvas's top edge will be: a canvas is at
+// most 88vh tall and centred, so its top is at least 6vh down. `onCanvas`
+// moves it onto the canvas once there is one.
+function showWarming() {
   const style = document.createElement('style');
   style.textContent = '@keyframes canvas-app-breathe{0%,100%{opacity:.35}50%{opacity:1}}';
   document.head.appendChild(style);
@@ -453,7 +460,13 @@ function showWarming(canvas) {
   dot.style.cssText =
     'width:6px;height:6px;border-radius:50%;background:#f3c873;animation:canvas-app-breathe 1.1s ease-in-out infinite';
   pill.append(dot, 'warming up');
+  let canvas = null;
   const place = () => {
+    if (canvas === null) {
+      pill.style.left = '50%';
+      pill.style.top = 'calc(6vh + 12px)';
+      return;
+    }
     const box = canvas.getBoundingClientRect();
     pill.style.left = `${box.left + box.width / 2}px`;
     pill.style.top = `${box.top + 12}px`;
@@ -461,10 +474,15 @@ function showWarming(canvas) {
   place();
   window.addEventListener('resize', place);
   document.body.appendChild(pill);
-  return () => {
-    window.removeEventListener('resize', place);
-    pill.style.opacity = '0';
-    setTimeout(() => { pill.remove(); style.remove(); }, 500);
+  return {
+    onCanvas: (shown) => { canvas = shown; place(); },
+    // Hiding twice is harmless, so every way out of the start may call it.
+    hide: () => {
+      if (!pill.isConnected) return;
+      window.removeEventListener('resize', place);
+      pill.style.opacity = '0';
+      setTimeout(() => { pill.remove(); style.remove(); }, 500);
+    },
   };
 }
 
@@ -483,9 +501,9 @@ async function main(show) {
   document.body.style.cssText =
     'margin:0;background:#06080f;height:100vh;display:flex;flex-direction:column;' +
     'align-items:center;justify-content:center;font:13px system-ui,sans-serif;color:#6d7aa8';
-  const loading = document.createElement('div');
-  loading.textContent = show.loading ?? 'Loading…';
-  document.body.appendChild(loading);
+  // The pill goes up before the skin can say whether it shows, because the
+  // skin is in the wasm. A skin without it takes it down as soon as it is read.
+  const warming = showWarming();
 
   const timer = frameTimer();
   const loadStart = performance.now();
@@ -496,6 +514,7 @@ async function main(show) {
   const toneCount = game.toneCount();
   const stepMs = 1000 / game.fps();
   const dressing = game.dressing();
+  if (!dressing.skin.show_loading_indicator) warming.hide();
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -628,8 +647,8 @@ async function main(show) {
     for (let k = Number(still); k > 0; k--) step(performance.now());
   }
 
-  loading.remove();
   document.body.appendChild(canvas);
+  warming.onCanvas(canvas);
   dressCanvas(dressing);
   try {
     draw(performance.now());
@@ -638,6 +657,7 @@ async function main(show) {
     return;
   }
   if (still !== null) {
+    warming.hide();
     timer?.loaded(loadMs, NO_WARM_UP);
     return;
   }
@@ -647,7 +667,7 @@ async function main(show) {
   // in, for tools/web_shots.mjs.
   // The skin decides whether the indicator shows; the warm-up runs either way.
   canvas.dataset.phase = 'warming';
-  const hideWarming = dressing.skin.show_loading_indicator ? showWarming(canvas) : () => {};
+  const hideWarming = warming.hide;
   await nextPaint();
   let warm;
   try {
@@ -666,7 +686,7 @@ async function main(show) {
 
 const show = window.SHOW;
 if (!show) throw new Error('canvas_app_runner: the page did not set window.SHOW');
-// A failure here used to leave the loading line up with the reason in the
+// A failure here used to leave the page up with the reason only in the
 // console, which is the one thing a blank page never tells you.
 main(show).catch((error) => {
   document.body.textContent = `${show.wasm} did not start: ${error.message}`;

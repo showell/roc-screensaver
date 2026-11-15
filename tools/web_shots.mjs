@@ -143,6 +143,15 @@ function atStep(step) {
 
 const INDICATOR_UP = "document.getElementById('warming-indicator') !== null";
 
+// Runs in each page before its own scripts, and notes whether the warming-up
+// indicator went up while there was no canvas yet: the start then shows the
+// pill through the wasm's download and compile rather than a bare loading page.
+const PILL_BEFORE_CANVAS = `new MutationObserver((changes, watcher) => {
+  if (document.getElementById('warming-indicator') === null) return;
+  window.__pillBeforeCanvas = document.querySelector('canvas') === null;
+  watcher.disconnect();
+}).observe(document, { childList: true, subtree: true });`;
+
 // What the page's skin put under the canvas: the keyboard help's text and each
 // link's words, address and where it opens, as the reader meets them.
 const SKIN_SEEN = `(() => {
@@ -173,6 +182,7 @@ try {
   link.on("Network.responseReceived", ({ response }) => { if (response.status >= 400) failures.push(`${response.status} for ${response.url}`); });
   link.on("Network.loadingFailed", ({ canceled, errorText }) => { if (!canceled) failures.push(`a request failed: ${errorText}`); });
   for (const domain of ["Page", "Runtime", "Network"]) await page.send(`${domain}.enable`, {}, page.session);
+  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: PILL_BEFORE_CANVAS }, page.session);
   // 700 high, so a 600-high canvas within the runner's 88vh is drawn at its own size.
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false }, page.session);
   const steps = times.filter((t) => t.startsWith("step="));
@@ -219,6 +229,9 @@ try {
         `the canvas changed in ${warm.changed} of ${warm.samples} samples; phase ${warm.phase} after ${Math.round(warm.ms)} ms`,
     );
     if (!warm.indicator || warm.phaseAtFirst !== "warming") failures.push("the first frame was not shown warming up under its indicator");
+    const pillEarly = await evaluate(page, "window.__pillBeforeCanvas === true");
+    console.log(`warm-up: indicator ${pillEarly ? "up" : "not up"} before the canvas existed`);
+    if (!pillEarly) failures.push("the warming-up indicator was not up while the wasm loaded");
     if (warm.changed > 0) failures.push(`the canvas changed during the warm-up, in ${warm.changed} of ${warm.samples} samples`);
     if (warm.phase !== "riding") failures.push(`the ride never started: phase ${warm.phase} after ${Math.round(warm.ms)} ms`);
     if (warm.changed > 0) console.log(`warm-up: first frame ${firstFrame}, seen ${warm.seen.join(" ")}`);
