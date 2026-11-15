@@ -14,7 +14,8 @@ crossing it each way in turn, each hop one lamp further on. The camera
 moves down the road at one constant speed, the bird's pace over a leg, so the
 bird draws ahead through each flight and the camera catches up through each
 perch. The lamps, their halos and the pools of light they throw on the road
-are its own; the bird is drawn a little larger than Safari's.
+are its own; the bird is drawn at 4.2 m, nearly twice Safari's 2.2, in every
+pose.
 
 The scene runs in a cycle (`Sunset.roc`, and the counts in `LanternsApp.roc`).
 The sun goes down a straight path over forty crossings (40 legs of 66 steps,

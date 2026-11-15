@@ -382,7 +382,8 @@ expect {
 }
 
 # Through the whole cycle the bird stays between 12 m and 45 m ahead of the
-# camera and on the screen, and the cycle ends on the first model again.
+# camera, and all of its drawing, the widest and tallest its pose reaches either
+# way, stays on the screen; and the cycle ends on the first model again.
 expect {
 	var $model = first_model
 	var $nearest = 1000.0
@@ -395,9 +396,13 @@ expect {
 		gap = bird.location.along - camera.along()
 		$nearest = $nearest.min(gap)
 		$farthest = $farthest.max(gap)
+		corners = Bird.pose_still(bird.pose).polygons().join_map(|polygon| polygon.points)
+		top = corners.fold(0.0, |most, corner| most.max(corner.y))
+		half_width = corners.fold(0.0, |most, corner| most.max(corner.x.abs()))
+		height = RoadCamera.size_on_screen({ height: Bird.height_metres, forward: gap }).to_f64()
 		$off_screen =
 			match camera.project(bird.location) {
-				Ok(p) if p.x.to_f64() >= 0.0 and p.x.to_f64() <= RoadCamera.screen_width and p.y.to_f64() >= 0.0 and p.y.to_f64() <= RoadCamera.screen_height => $off_screen
+				Ok(foot) if foot.x.to_f64() - height * half_width >= 0.0 and foot.x.to_f64() + height * half_width <= RoadCamera.screen_width and foot.y.to_f64() - height * top >= 0.0 and foot.y.to_f64() <= RoadCamera.screen_height => $off_screen
 				_ => $off_screen + 1
 			}
 		$model = model_at_next_step($model, Input.none)
