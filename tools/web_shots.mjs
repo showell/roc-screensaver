@@ -4,6 +4,8 @@
 // failed request or a canvas that never paints. A moving page must also start
 // still on its first frame under the runner's warming-up indicator, keep that
 // frame until its ride starts, and have dropped the indicator by every shot.
+// It prints what the page's skin put under the canvas, the keyboard help and
+// the links, for the gate to hold to the skin.
 // The runner's own console lines (`?timing=1`) are printed as they come.
 //
 //   node tools/web_shots.mjs <page url> <shots folder> <ms after first paint>...
@@ -141,6 +143,14 @@ function atStep(step) {
 
 const INDICATOR_UP = "document.getElementById('warming-indicator') !== null";
 
+// What the page's skin put under the canvas: the keyboard help's text and each
+// link's words and address, as the reader sees them.
+const SKIN_SEEN = `(() => {
+  const help = document.getElementById('keyboard-help');
+  const links = [...document.querySelectorAll('#skin-links a')].map((a) => a.textContent + ' ' + a.getAttribute('href'));
+  return { help: help ? help.textContent : null, links };
+})()`;
+
 async function evaluate(page, expression) {
   const { result, exceptionDetails } = await page.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, page.session);
   if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
@@ -214,6 +224,10 @@ try {
     if (warm.changed > 0) console.log(`warm-up: first frame ${firstFrame}, seen ${warm.seen.join(" ")}`);
     if (warm.ride === null) failures.push("the ride never drew a frame");
     else rideFrame = warm.ride;
+    // The gate holds these lines to the skin the page was built with.
+    const skin = await evaluate(page, SKIN_SEEN);
+    console.log(`skin help: ${skin.help === null ? "none" : skin.help}`);
+    console.log(`skin links: ${skin.links.length ? skin.links.join(", ") : "none"}`);
     for (const at of times.filter((t) => !t.startsWith("step=")).map(Number)) {
       const wait = at - (Date.now() - shotStart);
       if (wait > 0) await sleep(wait);

@@ -45,6 +45,11 @@ LanternsApp :: [].{
 		sounds: |_model| 0,
 		tones: [],
 		title: "Lanterns",
+		controls: [
+			{ keys: "Space", does: "pauses and resumes" },
+			{ keys: "R", does: "restarts at dawn" },
+			{ keys: "→", does: "skips ahead a crossing" },
+		],
 	}
 
 	frame_shapes : LanternsApp.Model -> List(Shapes.Shape)

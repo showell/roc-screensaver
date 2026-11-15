@@ -47,7 +47,23 @@ CanvasApp :: [].{
 		tones : List(CanvasApp.Tone),
 
 		title : Str,
+
+		# The keys the app answers and what each does, in the order a reader
+		# should meet them. A page's keyboard help is made from this, so it
+		# cannot drift from what the app says it reads; a native runner
+		# ignores it.
+		controls : List(CanvasApp.Control),
 	}
+
+	## One of an app's controls: the keys as a reader would name them ("Space",
+	## "→") and what pressing them does, as a phrase ("pauses and resumes").
+	Control : { keys : Str, does : Str }
+
+	## The one line of keyboard help an app's controls make, each control its
+	## keys then what it does, the controls apart by a middle dot. An app with
+	## no controls makes an empty line, which a page leaves out.
+	help_line : List(CanvasApp.Control) -> Str
+	help_line = |controls| Str.join_with(controls.map(|control| "${control.keys} ${control.does}"), " · ")
 
 	## The seconds one step covers, `1 / frames_a_second`, which every runner
 	## passes to `model_at_next_step`. An app stepped zero times a second never
@@ -66,3 +82,7 @@ CanvasApp :: [].{
 	untimed_model_at_next_step : (model, Input.Snapshot -> model) -> (model, Input.Snapshot, F32 -> model)
 	untimed_model_at_next_step = |step| |model, input, _seconds| step(model, input)
 }
+
+expect CanvasApp.help_line([]) == ""
+expect CanvasApp.help_line([{ keys: "Space", does: "pauses" }]) == "Space pauses"
+expect CanvasApp.help_line([{ keys: "Space", does: "pauses" }, { keys: "R", does: "restarts" }]) == "Space pauses · R restarts"

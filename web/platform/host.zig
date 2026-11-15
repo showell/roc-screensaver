@@ -1,6 +1,6 @@
-//! The canvas_apps wasm host. It has nine exports, which
+//! The canvas_apps wasm host. It has ten exports, which
 //! web/canvas_app_runner.js binds: computeFrame, advance, sounds, toneCount,
-//! toneFreq, toneMs, width, height and fps. The app's model is a Roc value that
+//! toneFreq, toneMs, width, height, fps and computeDressing. The app's model is a Roc value that
 //! the host holds as one boxed pointer, which `roc_init` makes on the first
 //! call. Roc's reference counting keeps it alive between calls.
 //!
@@ -36,6 +36,7 @@ extern fn roc_release(frame: RocList) callconv(.c) void;
 extern fn roc_width() callconv(.c) u32;
 extern fn roc_height() callconv(.c) u32;
 extern fn roc_fps() callconv(.c) u32;
+extern fn roc_dressing() callconv(.c) ?[*]u8;
 
 // The module has no imports. web/canvas_app_runner.js instantiates it with an
 // empty import object, so a panic is a wasm trap, which the page sees as a
@@ -191,5 +192,17 @@ pub export fn toneFreq(index: u32) u32 {
 
 pub export fn toneMs(index: u32) u32 {
     return roc_tone_ms(index);
+}
+
+// The page's dressing: the skin its web root chose and the app's keyboard
+// help, one boxed Roc value. The page asks once, at the start, and reads it
+// through the glue as it reads a frame, so the answer is where the box's
+// pointer is kept. The box is kept for the page's life, never freed, since
+// a page asks for it once.
+var dressing_box: ?[*]u8 = null;
+
+pub export fn computeDressing() u32 {
+    if (dressing_box == null) dressing_box = roc_dressing();
+    return @intCast(@intFromPtr(&dressing_box));
 }
 

@@ -25,11 +25,13 @@
 // laid beside the native harness's frame at the same step (`zig build png`).
 //
 // A moving page starts on its first frame, still, under a small "warming up"
-// pill, while throwaway frames give the browser time to finish compiling the
+// pill when its skin shows one, while throwaway frames give the browser time to finish compiling the
 // wasm (the warm-up, below); then the ride starts from that same frame.
 //
-// No hint: every game draws the keys it reads in its own HUD, which is the
-// only place that cannot drift from the keys it actually reads.
+// The page's skin (lib/Skin.roc) comes from the wasm, once: whether to show
+// the warming-up pill, whether to show the keyboard help, which Roc makes from
+// the app's declared controls so it cannot drift from them, and the links. The
+// help and the links go in one quiet line under the canvas (`dressCanvas`).
 //
 // This file is copied from roc-apps (`canvas_apps/web/canvas_app_runner.js`) on 2026-11-15, and it
 // is allowed to drift from it.
@@ -227,7 +229,7 @@ function drawSpeaker(ctx, width, height, toneCount, ringing, now) {
 // What the wasm module must provide, checked once so a missing or mismatched
 // export says which, rather than surfacing later as a bare `unreachable` or as
 // `Cannot read properties of undefined`.
-const WANTED = ['memory', 'computeFrame', 'advance', 'sounds', 'toneCount', 'toneFreq', 'toneMs', 'width', 'height', 'fps'];
+const WANTED = ['memory', 'computeFrame', 'advance', 'sounds', 'toneCount', 'toneFreq', 'toneMs', 'width', 'height', 'fps', 'computeDressing'];
 
 function bindApp(exports) {
   const missing = WANTED.filter((name) => !(name in exports));
@@ -261,7 +263,51 @@ function bindApp(exports) {
       FRAME_SPLIT.decodeMs = performance.now() - decodeStart;
       return shapes;
     },
+    // The page's dressing, `{ skin, keyboard_help }` (lib/Skin.roc's
+    // `Dressing`), read once. The view is made after the call, as the
+    // frame's is, for the same reason.
+    dressing: () => {
+      const at = exports.computeDressing();
+      return RocGlue.dressing(new DataView(exports.memory.buffer), at);
+    },
   };
+}
+
+// The skin's dressing around the canvas: one quiet line under it, the app's
+// keyboard help when the skin shows it, then the skin's links. Nothing goes
+// over the scene. A skin that shows neither adds nothing, so the page is the
+// canvas alone.
+function dressCanvas(dressing) {
+  const { skin, keyboard_help } = dressing;
+  const help = skin.show_keyboard_help && keyboard_help !== '';
+  if (!help && skin.links.length === 0) return;
+  const line = document.createElement('div');
+  line.id = 'canvas-app-skin';
+  line.style.cssText =
+    'margin-top:10px;display:flex;flex-wrap:wrap;justify-content:center;align-items:baseline;gap:6px 22px;' +
+    'font:12px system-ui,sans-serif;letter-spacing:0.02em;color:#6d7aa8';
+  if (help) {
+    const keys = document.createElement('span');
+    keys.id = 'keyboard-help';
+    keys.textContent = keyboard_help;
+    line.append(keys);
+  }
+  if (skin.links.length > 0) {
+    const links = document.createElement('span');
+    links.id = 'skin-links';
+    links.style.cssText = 'display:flex;gap:14px';
+    for (const { label, url } of skin.links) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.textContent = label;
+      link.style.cssText = 'color:#8f9cc8;text-decoration:none';
+      link.addEventListener('mouseenter', () => { link.style.textDecoration = 'underline'; });
+      link.addEventListener('mouseleave', () => { link.style.textDecoration = 'none'; });
+      links.append(link);
+    }
+    line.append(links);
+  }
+  document.body.appendChild(line);
 }
 
 const CATCH_UP = 4; // steps one animation frame may take before time is dropped
@@ -445,6 +491,7 @@ async function main(show) {
   const height = game.height();
   const toneCount = game.toneCount();
   const stepMs = 1000 / game.fps();
+  const dressing = game.dressing();
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -579,6 +626,7 @@ async function main(show) {
 
   loading.remove();
   document.body.appendChild(canvas);
+  dressCanvas(dressing);
   try {
     draw(performance.now());
   } catch (error) {
@@ -593,8 +641,9 @@ async function main(show) {
   // The still frame and the indicator reach the screen before the warm-up
   // takes the thread. `data-phase` says which part of the start the page is
   // in, for tools/web_shots.mjs.
+  // The skin decides whether the indicator shows; the warm-up runs either way.
   canvas.dataset.phase = 'warming';
-  const hideWarming = showWarming(canvas);
+  const hideWarming = dressing.skin.show_loading_indicator ? showWarming(canvas) : () => {};
   await nextPaint();
   let warm;
   try {

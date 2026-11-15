@@ -1,8 +1,9 @@
 ## WasmApp turns a CanvasApp into what the canvas apps' wasm platform asks
-## for, which is the same for every app. The platform asks for eleven
+## for, which is the same for every app. The platform asks for twelve
 ## functions over a boxed model: box it, step it with the tick's keys, answer
-## its shapes, and say which tones went off. `program` takes a CanvasApp and
-## names none, so an app's wasm file only names its app.
+## its shapes, say which tones went off, and say how the page is dressed (a
+## `Skin`). `program` takes a CanvasApp and names none, so an app's wasm file
+## only names its app; `program_with_skin` takes the skin beside it.
 ##
 ## This file is copied from roc-apps (`canvas_apps/lib/WasmApp.roc`) on 2026-11-15, and it
 ## is allowed to drift from it.
@@ -10,6 +11,7 @@ import CanvasApp
 import Input
 import Mouse
 import Shapes
+import Skin
 
 WasmApp :: [].{
 	# Roc reads `game.frame_shapes(m)` as a method call, so each of a game's
@@ -17,6 +19,8 @@ WasmApp :: [].{
 	#
 	# The seven numbers a tick carries are one Input.Snapshot, flattened: the
 	# wasm edge has no records, so the runner packs and this unpacks.
+	#
+	# An app with no skin is dressed in `Skin.bare`.
 	program : CanvasApp.CanvasApp(model) -> {
 		init : {} -> Box(model),
 		model_at_next_step : Box(model), U32, U32, U32, U32, F32, F32, F32 -> Box(model),
@@ -29,8 +33,29 @@ WasmApp :: [].{
 		width : {} -> U32,
 		height : {} -> U32,
 		fps : {} -> U32,
+		dressing : {} -> Box(Skin.Dressing),
 	}
-	program = |game| {
+	program = |game| WasmApp.program_with_skin(game, Skin.bare)
+
+	# The page reads the skin once, with the keyboard help made from the
+	# app's controls, through `dressing`. It is boxed so the host holds one
+	# pointer, which the page's glue reads as it reads a frame.
+	program_with_skin : CanvasApp.CanvasApp(model),
+	Skin.Skin -> {
+		init : {} -> Box(model),
+		model_at_next_step : Box(model), U32, U32, U32, U32, F32, F32, F32 -> Box(model),
+		frame_shapes : Box(model) -> List(Shapes.Shape),
+		release : List(Shapes.Shape) -> {},
+		sounds : Box(model) -> U32,
+		tone_count : {} -> U32,
+		tone_freq : U32 -> U32,
+		tone_ms : U32 -> U32,
+		width : {} -> U32,
+		height : {} -> U32,
+		fps : {} -> U32,
+		dressing : {} -> Box(Skin.Dressing),
+	}
+	program_with_skin = |game, skin| {
 		# The step a tick covers, which is the rate the game asked to be run at.
 		seconds_a_step = CanvasApp.seconds_a_step(game)
 		model_at_next_step = game.model_at_next_step
@@ -77,6 +102,7 @@ WasmApp :: [].{
 			width: |{}| game.size.width.to_u32_try() ?? crash "WasmApp.program: a width outside a U32's range",
 			height: |{}| game.size.height.to_u32_try() ?? crash "WasmApp.program: a height outside a U32's range",
 			fps: |{}| game.frames_a_second,
+			dressing: |{}| Box.box(Skin.dressing_of(game, skin)),
 		}
 	}
 }

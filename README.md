@@ -45,7 +45,7 @@ One app value, `LanternsApp.canvas_app` (a lib `CanvasApp`), runs both ways:
   host/raster.zig paints: the PNG harness, and the Windows `.scr`.
 
 The page starts on its first frame, still, under a small "warming up" pill
-near the top, as soon as the wasm is ready. Firefox compiles a wasm module
+near the top when its skin shows one (below, "Skins"), as soon as the wasm is ready. Firefox compiles a wasm module
 twice, a quick tier and then an optimizing one in the background, and frames
 drawn before it switches run slowly, so the runner computes, decodes and
 paints throwaway frames of the same model onto a canvas a few pixels wide for
@@ -55,6 +55,33 @@ the warm-up steps the model. `?timing=1` logs how many throwaway frames ran,
 how long they took, and each one's time. In headless Chromium it runs about
 110 to 130 frames in 0.3 s, from about 4 ms a frame to about 1 ms; Firefox
 itself is not on this box, so the effect there is unmeasured.
+
+### Skins
+
+A skin is the page's dressing around an app, and only the page's: it never
+changes the app, and the native build never sees it. It is a Roc value,
+`Skin.Skin` in `lib/Skin.roc`, which an app's web root chooses and hands to
+the page with `WasmApp.program_with_skin(app, skin)` (`WasmApp.program(app)`
+dresses it in `Skin.bare`, which shows nothing). It holds:
+
+- **`show_loading_indicator`**: whether the "warming up" pill shows over the
+  first frame. The warm-up runs either way.
+- **`show_keyboard_help`**: whether the app's keyboard help shows under the
+  canvas. The help itself is the app's: each `CanvasApp` declares its
+  `controls`, a list of `{ keys, does }`, and `CanvasApp.help_line` makes
+  the one line from them (the lanterns' is "Space pauses and resumes · R
+  restarts at dawn · → skips ahead a crossing"). A native runner ignores
+  `controls`.
+- **`links`**: a list of `{ label, url }`, shown as small text links beside
+  the help.
+
+The page reads it once, at the start: the web platform's `dressing` entry
+answers a boxed `Skin.Dressing`, the skin with the help line, and the
+runner reads it through the glue `roc glue` generates (`RocGlue.dressing`),
+as it reads a frame. The help and the links go in one quiet line under the
+canvas; with a skin that shows neither, the page is the canvas alone.
+The lanterns' `web.roc` holds Steve's skin: the indicator and the help on,
+and the links Home (https://roc.lynrummy.com) and Code (this repo).
 
 `zig build png -- out/x 20 48` and `node tools/web_shots.mjs <page url>
 out/y step=20 step=48` write `step-020.png` and `step-048.png` each way, the
@@ -145,10 +172,10 @@ to move as a real app uses it.
     zig build png -- out/x      # its first 8 frames, out/x/frame-000.png ...
     zig build png -- out/x 48   # the frame after 48 steps, out/x/step-048.png
     zig build test              # the seam against roc glue; the basic example's frames painted and freed; the keys example's keys
-    shale tools/web_build.shale # the lanterns page, into the dev channel (opt=dev: the dev backend)
+    shale tools/web_build.shale # the lanterns page, into the dev channel (opt=dev: the dev backend; dest=NAME: another folder)
     zig build -Dwindows         # zig-out/bin/screensaver.exe and screensaver.scr (x86_64-windows)
     zig build -Dwindows headless  # on Windows: the .exe with no window, the last frame's checksum
-    shale tools/verify.shale    # the gate: every check, a line each
+    shale tools/verify.shale    # the gate: every check, a line each (dest=NAME: a branch's page folder)
     shale tools/glue.shale      # after a change to platform/: roc glue's snapshot again
 
 `-Dapp=<path to main.roc>` builds another app in place of the lanterns.
@@ -193,7 +220,7 @@ no arguments, it is a dev window whose keys go to the app (Q or Esc quits).
 - `native/`: the package that runs a lib `CanvasApp` on this platform:
   `NativeApp.roc`, and `FrameOfShapes.roc`, the adapter.
 - `lib/`: the canvas apps' vocabulary (`Shapes`, `Brush`, `CanvasApp`,
-  `WasmApp`), copied from roc-apps.
+  `WasmApp`), copied from roc-apps, and `Skin`, the page's dressing (above).
 - `web/`: the page's wasm platform and host, `shapes_canvas.js` and
   `canvas_app_runner.js`, copied from roc-apps.
 - `screensavers/lanterns/`: the screensaver (above). Its bird, flight and

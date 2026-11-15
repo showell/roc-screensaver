@@ -1,9 +1,10 @@
 # The canvas_apps platform: what a page needs from any game, over one boxed model
 # the host keeps (host.zig).
 #
-# Eleven functions. `model_at_next_step` takes one Input.Snapshot, flattened into numbers
-# because the wasm edge has no records, and `sounds` reports a bit per tone for
-# the speaker.
+# Twelve functions. `model_at_next_step` takes one Input.Snapshot, flattened into numbers
+# because the wasm edge has no records, `sounds` reports a bit per tone for
+# the speaker, and `dressing` is the page's skin with the app's keyboard help,
+# boxed so the host holds a pointer the page's glue reads.
 #
 # This file is copied from roc-apps (`canvas_apps/web/platform/main.roc`) on 2026-11-15, and it
 # is allowed to drift from it.
@@ -21,12 +22,14 @@ platform ""
 			width : {} -> U32,
 			height : {} -> U32,
 			fps : {} -> U32,
+			dressing : {} -> Box(Skin.Dressing),
 		}
 	}
 	exposes []
 	packages { lib: "../../lib/main.roc" }
 	provides {
 		"roc_advance": advance_for_host,
+		"roc_dressing": dressing_for_host,
 		"roc_fps": fps_for_host,
 		"roc_frame": frame_for_host,
 		"roc_height": height_for_host,
@@ -42,11 +45,12 @@ platform ""
 		inputs_dir: "targets/",
 		wasm32: {
 			inputs: ["host.wasm", app],
-			exports: ["computeFrame", "advance", "sounds", "toneCount", "toneFreq", "toneMs", "width", "height", "fps"],
+			exports: ["computeFrame", "advance", "sounds", "toneCount", "toneFreq", "toneMs", "width", "height", "fps", "computeDressing"],
 		},
 	}
 
 import lib.Shapes
+import lib.Skin
 
 init_for_host = program.init
 
@@ -69,3 +73,5 @@ width_for_host = program.width
 height_for_host = program.height
 
 fps_for_host = program.fps
+
+dressing_for_host = program.dressing
