@@ -115,7 +115,8 @@ fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
     }
 }
 
-const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \n");
+/// The `\r` is there because a Windows checkout ends the file's line with CRLF.
+const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \r\n");
 
 /// The Roc is pinned (roc-version): `-Droc=<path>`, else
 /// `~/tools/roc-<pin>/roc`, else `roc` on the PATH, which is where CI's
