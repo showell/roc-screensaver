@@ -494,6 +494,7 @@ fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Sh
                         for (run, cols) |*px, c| blendOne(px, c);
                     }
                 },
+                .lanes => lanesRun(fb, rowbase, xa, xb, yc * roll.inv_ss, roll.inv_ss, shader),
                 .per_pixel => if (upright) {
                     // design.y is constant across the scanline; design.x = (x+0.5)·inv_ss (exact,
                     // = toDesign at st==0) — one multiply, no rotation. Common case (straight road).
@@ -520,9 +521,97 @@ fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Sh
 /// it, a `by_column` fill takes the per-pixel walk.
 const col_lut_len = 4096;
 
-/// How fillPoly colours an upright polygon's pixels. Every plan but
-/// `per_pixel` gives exactly the pixels `per_pixel` gives, because it only
-/// skips working out again a colour that cannot have changed.
+/// How many pixels a `lanes` run works out at once.
+const lanes = 8;
+const LaneF = @Vector(lanes, f32);
+const LaneU = @Vector(lanes, u32);
+
+fn splatF(x: f32) LaneF {
+    return @splat(x);
+}
+
+/// A `lanes` run: the pixels xa..xb of one row, at design y `dy`, each
+/// coloured from its own design point as shadePixel colours it, eight at
+/// once, and the last few by shadePixel itself. Every step is one IEEE
+/// operation or a truncation, in shadePixel's order, so each lane gives
+/// shadePixel's bits.
+fn lanesRun(fb: Fb, rowbase: usize, xa: i64, xb: i64, dy: f32, inv_ss: f32, shader: Shader) void {
+    switch (shader) {
+        inline .radial, .ellipse, .linear => |s, tag| {
+            var x = xa;
+            while (x + lanes - 1 <= xb) : (x += lanes) {
+                // design.x = (x+0.5)·inv_ss, the whole numbers x exact as floats.
+                const xs = splatF(@floatFromInt(x)) + std.simd.iota(f32, lanes);
+                const dx = (xs + splatF(0.5)) * splatF(inv_ss);
+                const at = rowbase + @as(usize, @intCast(x));
+                const dst: LaneU = fb.px[at..][0..lanes].*;
+                fb.px[at..][0..lanes].* = switch (tag) {
+                    .radial => blk: {
+                        const ex = dx - splatF(s.cx);
+                        const ey = dy - s.cy;
+                        const r = @sqrt(ex * ex + splatF(ey * ey));
+                        break :blk stopBlendLanes(dst, clamp01Lanes(r / splatF(s.r)), s.c0, s.c1, 0.0, 1.0);
+                    },
+                    .ellipse => blk: {
+                        const ex = dx - splatF(s.cx);
+                        const ey = dy - s.cy;
+                        const u = (splatF(s.vy) * ex - splatF(s.vx * ey)) / splatF(s.det);
+                        const v = (splatF(-s.uy) * ex + splatF(s.ux * ey)) / splatF(s.det);
+                        break :blk stopBlendLanes(dst, clamp01Lanes(@sqrt(u * u + v * v)), s.c0, s.c1, s.o0, s.o1);
+                    },
+                    .linear => blk: {
+                        const dxv = s.bx - s.ax;
+                        const dyv = s.by - s.ay;
+                        const len2 = dxv * dxv + dyv * dyv;
+                        const p = ((dx - splatF(s.ax)) * splatF(dxv) + splatF((dy - s.ay) * dyv)) / splatF(len2);
+                        break :blk stopBlendLanes(dst, clamp01Lanes(p), s.c0, s.c1, s.o0, s.o1);
+                    },
+                    else => unreachable,
+                };
+            }
+            while (x <= xb) : (x += 1) {
+                const dx = (@as(f32, @floatFromInt(x)) + 0.5) * inv_ss;
+                shadePixel(fb, rowbase + @as(usize, @intCast(x)), shader, .{ .x = dx, .y = dy });
+            }
+        },
+        else => unreachable,
+    }
+}
+
+fn clamp01Lanes(x: LaneF) LaneF {
+    return @min(@max(x, splatF(0.0)), splatF(1.0));
+}
+
+/// stopColor at `p`, then blendOne over `dst`, a lane at a time. stopColor's
+/// two ends need no branch: the fraction (p-o0)/(o1-o0) held to 0..1 gives
+/// lerpRgba exactly c0 at 0 and c1 at 1, since the channels are whole
+/// numbers. And an unseen colour needs none either: with a = 0 the blend
+/// gives back dst's bytes. The caller sees to o1 > o0.
+fn stopBlendLanes(dst: LaneU, p: LaneF, c0: u32, c1: u32, o0: f32, o1: f32) LaneU {
+    const q = clamp01Lanes((p - splatF(o0)) / splatF(o1 - o0));
+    const a = @as(LaneF, @floatFromInt(lerpByteLanes(c0, c1, 24, q))) / splatF(255.0);
+    const inv = splatF(1.0) - a;
+    var out: LaneU = @splat(0);
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const src: LaneF = @floatFromInt(lerpByteLanes(c0, c1, shift, q));
+        const under: LaneF = @floatFromInt((dst >> @splat(shift)) & @as(LaneU, @splat(0xff)));
+        const mixed: LaneU = @intFromFloat(src * a + under * inv + splatF(0.5));
+        out |= mixed << @splat(shift);
+    }
+    return out;
+}
+
+/// lerpRgba's one channel at `shift`, as a whole byte: lerpf then +0.5, truncated.
+fn lerpByteLanes(c0: u32, c1: u32, comptime shift: u5, q: LaneF) LaneU {
+    const from = chan(c0, shift);
+    const to = chan(c1, shift);
+    return @intFromFloat(splatF(from) + splatF(to - from) * q + splatF(0.5));
+}
+
+/// How fillPoly colours an upright polygon's pixels. Every plan gives
+/// exactly the pixels `per_pixel` gives: `solid`, `by_row` and `by_column`
+/// skip working out again a colour that cannot have changed, and `lanes`
+/// works out eight pixels with the same operations at once.
 const Plan = union(enum) {
     /// One opaque colour: each run is a memset.
     solid: u32,
@@ -534,6 +623,10 @@ const Plan = union(enum) {
     /// A colour that depends on design x alone: a horizontal linear gradient
     /// (a span's halves) or a round fill. Worked out once a column.
     by_column,
+    /// A colour that changes from pixel to pixel: a radial gradient (the
+    /// halos), an elliptical one, or a slanted linear one. Each pixel's own,
+    /// eight pixels at a time (lanesRun).
+    lanes,
     /// Everything else: each pixel's colour from its own design point.
     per_pixel,
 };
@@ -552,9 +645,12 @@ fn planOf(shader: Shader) Plan {
             // at any p, since lerpRgba(c, c, t) is c.
             if (s.c0 == s.c1 or dxv * dxv + dyv * dyv < 1e-6 or dxv == 0.0) return .by_row;
             if (dyv == 0.0) return .by_column;
-            return .per_pixel;
+            return if (s.o1 > s.o0) .lanes else .per_pixel;
         },
-        .solidAlpha, .radial, .ellipse => .per_pixel,
+        .radial => .lanes,
+        .ellipse => |s| if (s.o1 > s.o0) .lanes else .per_pixel,
+        // One translucent colour everywhere.
+        .solidAlpha => .by_row,
     };
 }
 
@@ -576,7 +672,8 @@ fn colorAt(shader: Shader, d: Pt) u32 {
             const p = if (len2 < 1e-6) 0.0 else ((d.x - s.ax) * dxv + (d.y - s.ay) * dyv) / len2;
             return stopColor(s.c0, s.c1, clamp01(p), s.o0, s.o1);
         },
-        .solid, .solidAlpha, .radial, .ellipse => unreachable,
+        .solidAlpha => |s| s.rgba,
+        .solid, .radial, .ellipse => unreachable,
     };
 }
 
