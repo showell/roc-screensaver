@@ -21,6 +21,7 @@ package
 		Point,
 		RgbColor,
 		Shapes,
+		Skin,
 		WasmApp,
 	]
 	{}

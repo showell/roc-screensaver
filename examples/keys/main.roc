@@ -34,6 +34,10 @@ canvas_app = {
 	sounds: |_model| 0,
 	tones: [],
 	title: "keys",
+	controls: [
+		{ keys: "Space", does: "adds a disc" },
+		{ keys: "→", does: "grows the first disc while held" },
+	],
 }
 
 ## The model after one step: a struck Space counted once, however long it is
