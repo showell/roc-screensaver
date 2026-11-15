@@ -1,0 +1,68 @@
+-- The gate: every check the repo has, one line each with its numbers, run
+-- from the repo's root as `shale tools/verify.shale`. It stops at the first
+-- check that fails.
+--   roc fmt --check over platform/ and examples/
+--   roc check of the example, held to zero errors and zero warnings by the
+--     report's marks, since a warning alone still exits 2
+--   zig fmt --check over build.zig and host/
+--   zig build, which builds the example's archive and the harness
+--   zig build test, held to exactly `tests_expected` tests
+--   the PNG harness over the example: exactly `pngs_expected` PNGs, and
+--     the first and last differ
+
+const tests_expected = 5
+const pngs_expected = 8
+const png_dir = ".zig-cache/verify-png"
+
+if not exists("platform/main.roc") then
+  fail("verify: run it from roc-screensaver's root (no platform/main.roc here)")
+end
+
+const pin = trim(read("roc-version"))
+const roc = real("tools:roc-" .. pin .. "/roc")
+
+function line(name, ok, detail, ms)
+  local verdict = "PASS"
+  if not ok then verdict = "FAIL" end
+  print(verdict .. "  " .. name .. ": " .. detail .. " (" .. ms .. " ms)")
+  if not ok then fail("verify: " .. name .. " failed") end
+end
+
+local r = run({roc, "fmt", "--check", "platform", "examples"}, {timeout_ms = 30000, tail = 20})
+line("roc fmt --check", r.code == 0, #glob("**/*.roc") .. " files, " .. lines(trim(r.out))[1], r.ms)
+
+r = run({roc, "check", "examples/basic/main.roc"}, {timeout_ms = 60000, whole = 200000})
+local errors = #find_all(r.out, "── ✗")
+local warnings = #find_all(r.out, "── ●")
+if errors + warnings > 0 then print(r.out) end
+line("roc check", errors == 0 and warnings == 0, errors .. " errors, " .. warnings .. " warnings", r.ms)
+
+r = run({"zig", "fmt", "--check", "build.zig", "host"}, {timeout_ms = 30000, tail = 20})
+if r.code ~= 0 then print(r.out) end
+line("zig fmt --check", r.code == 0, #glob("host/**/*.zig") + 1 .. " files", r.ms)
+
+r = run({"zig", "build"}, {timeout_ms = 300000, tail = 40})
+if r.code ~= 0 then print(r.out) end
+line("zig build", r.code == 0, "exit " .. r.code, r.ms)
+
+r = run({"zig", "build", "test", "--summary", "all"}, {timeout_ms = 300000, tail = 40})
+local counts = re_find(r.out, "(\\d+)/(\\d+) tests passed")
+local passed = 0
+local ran = 0
+if counts ~= nil then
+  passed = parse_int(counts.groups[1])
+  ran = parse_int(counts.groups[2])
+end
+if r.code ~= 0 or ran ~= tests_expected then print(r.out) end
+line("zig build test", r.code == 0 and passed == tests_expected and ran == tests_expected, passed .. " of " .. ran .. " passed, " .. tests_expected .. " expected", r.ms)
+
+if exists(png_dir) then remove_tree(png_dir) end
+r = run({"zig", "build", "png", "--", png_dir}, {timeout_ms = 120000, tail = 20})
+if r.code ~= 0 then print(r.out) end
+local pngs = glob(png_dir .. "/*.png", {hidden = true})
+local first = png_dir .. "/frame-000.png"
+local last = png_dir .. "/frame-00" .. (pngs_expected - 1) .. ".png"
+local differ = #pngs == pngs_expected and read(first) ~= read(last)
+local said = "the first and last differ"
+if not differ then said = "the first and last are the same" end
+line("png harness", r.code == 0 and #pngs == pngs_expected and differ, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
