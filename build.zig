@@ -4,11 +4,16 @@ const std = @import("std");
 /// platform/ into one archive, which is linked into each of the host's
 /// programs.
 ///
-///   zig build png -- <out dir>   the headless harness: the first frames as PNGs
+///   zig build png -- <out dir> [step ...]
+///                                the headless harness: the first frames as
+///                                PNGs, or the frames at the steps named
 ///   zig build test               the host's tests: the seam against roc glue,
-///                                and the example's frames painted and freed
+///                                and the basic example's frames painted and
+///                                freed
 ///
-/// `-Dapp=<path>` names another app; the example is the default.
+/// `-Dapp=<path>` names another app; the lanterns screensaver is the default.
+/// The tests always link the basic example (examples/basic/), whose every
+/// shape and word they know by heart.
 ///
 /// `-Dwindows` builds the Windows screensaver instead (host/win32.zig, on
 /// Roc's x64win archive), from any host:
@@ -19,7 +24,7 @@ const std = @import("std");
 ///                                  host runs Windows programs
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
-    const app_root = b.option([]const u8, "app", "The app's main.roc (examples/basic/main.roc)") orelse "examples/basic/main.roc";
+    const app_root = b.option([]const u8, "app", "The app's main.roc (screensavers/lanterns/main.roc)") orelse "screensavers/lanterns/main.roc";
     const windows = b.option(bool, "windows", "Build the Windows screensaver (x86_64-windows) in place of the Linux programs") orelse false;
     const roc = rocCompiler(b);
 
@@ -37,14 +42,15 @@ pub fn build(b: *std.Build) void {
     const png = b.addRunArtifact(png_exe);
     png.addPassthruArgs();
     png.stdio = .inherit;
-    b.step("png", "The headless harness: -- <out dir>, the app's first frames as PNGs").dependOn(&png.step);
+    b.step("png", "The headless harness: -- <out dir> [step ...], the app's frames as PNGs").dependOn(&png.step);
 
-    const tests = b.step("test", "The host's tests: the seam against roc glue, and the example's frames painted and freed");
+    const tests = b.step("test", "The host's tests: the seam against roc glue, and the basic example's frames painted and freed");
+    const basic = rocArchive(b, roc, "examples/basic/main.roc", "x64musl", "basic-x64musl.a");
     const abi_test = b.createModule(.{ .root_source_file = b.path("host/abi_test.zig"), .target = target, .optimize = optimize });
-    abi_test.addObjectFile(app);
+    abi_test.addObjectFile(basic);
     tests.dependOn(&testRun(b, abi_test).step);
     const app_test = b.createModule(.{ .root_source_file = b.path("host/screensaver_test.zig"), .target = target, .optimize = optimize });
-    app_test.addObjectFile(app);
+    app_test.addObjectFile(basic);
     tests.dependOn(&testRun(b, app_test).step);
 }
 
@@ -53,7 +59,9 @@ pub fn build(b: *std.Build) void {
 fn rocArchive(b: *std.Build, roc: []const u8, app_root: []const u8, roc_target: []const u8, name: []const u8) std.Build.LazyPath {
     const archive = b.addSystemCommand(&.{ roc, "build", app_root, b.fmt("--target={s}", .{roc_target}), "--opt=dev" });
     archive.setCwd(b.path("."));
-    rocInputs(b, archive, "platform");
+    // The packages a canvas app reaches, lib/ and native/, are inputs too,
+    // whichever app is built: a change to either builds it again.
+    for ([_][]const u8{ "platform", "lib", "native" }) |folder| rocInputs(b, archive, folder);
     rocInputs(b, archive, std.fs.path.dirname(app_root) orelse ".");
     archive.addFileInput(.{ .cwd_relative = roc });
     return archive.addPrefixedOutputFileArg("--output=", name);

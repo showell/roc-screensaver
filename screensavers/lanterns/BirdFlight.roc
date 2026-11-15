@@ -1,27 +1,27 @@
-## A Roc bird's flight down the endless road: the tree it leaves, and the one
+## A Roc bird's flight down the endless road: the lamp it leaves, and the one
 ## it flies to, and where it is and how it looks along the way. The bird sits on
-## its perch, then flies diagonally ahead, across the road, to the first tree on
+## its perch, then flies diagonally ahead, across the road, to the first lamp on
 ## the other side far enough along, and perches there. The next flight starts
-## from that tree and crosses back, so the bird zigzags down the road for ever.
+## from that lamp and crosses back, so the bird zigzags down the road for ever.
 ##
 ## This file is adapted from roc-apps (`canvas_apps/safari/BirdFlight.roc`) on
 ## 2026-11-15, and it is allowed to drift from it. The poses, the wing beat, the
 ## flight's frames, its eased path and its arc are Safari's, copied. What
 ## differs is where a flight goes: Safari's bird starts on the left and flies
-## once, while this one alternates sides, so a flight also has a heading, which
-## says which way its side-on stills face.
+## once from tree to tree, while this one zigzags between lamps, so a flight
+## also has a heading, which says which way its side-on stills face.
 import Easing
-import RoadTrees
+import RoadLamps
 import lib.Fraction
 
-## A bird's flight is the tree it leaves, and the one it flies to.
-BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
+## A bird's flight is the lamp it leaves, and the one it flies to.
+BirdFlight := { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }.{
 
 	## Where the wings are in a beat.
 	WingBeat : [WingsUp, WingsDown]
 
 	## How the bird looks: sitting; side on as it takes off; seen from behind
-	## as it flies off; and dropping onto its tree.
+	## as it flies off; and dropping onto its lamp.
 	BirdPose : [
 		Perched,
 		Side(BirdFlight.WingBeat),
@@ -39,35 +39,35 @@ BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
 	## A bird at one instant: how it looks, and where it is.
 	BirdInstant : { pose : BirdFlight.BirdPose, location : BirdFlight.Location }
 
-	## Where a flight has got to: not begun, so the bird sits on the tree it
+	## Where a flight has got to: not begun, so the bird sits on the lamp it
 	## will leave, or playing and this many steps in, which is the frame it
 	## shows.
 	Stage : [Waiting, Playing(U64)]
 
-	## The first flight, from the first tree on the left.
+	## The first flight, from the first lamp on the left.
 	first : BirdFlight
-	first = BirdFlight.flight_from(RoadTrees.tree_at(Left, 0))
+	first = BirdFlight.flight_from(RoadLamps.lamp_at(Left, 0))
 
-	## The flight of a bird perched on `perch`: to the first tree on the other
+	## The flight of a bird perched on `perch`: to the first lamp on the other
 	## side of the road far enough along.
-	flight_from : RoadTrees.RoadTree -> BirdFlight
+	flight_from : RoadLamps.RoadLamp -> BirdFlight
 	flight_from = |perch| {
-		other_side = RoadTrees.other_side(perch.side)
-		is_far_enough = |tree| tree.along >= perch.along + shortest_hop
-		# A tree two places on is at least 60 m less two nudges along, past
+		other_side = RoadLamps.other_side(perch.side)
+		is_far_enough = |lamp| lamp.along >= perch.along + shortest_hop
+		# A lamp two places on is at least 60 m less two nudges along, past
 		# the shortest hop, so one of these three is always far enough.
-		candidates = [0, 1, 2].map(|ahead| RoadTrees.tree_at(other_side, perch.place + ahead))
-		to = candidates.find_first(is_far_enough) ?? crash "BirdFlight.flight_from: no tree within two places is a hop away"
+		candidates = [0, 1, 2].map(|ahead| RoadLamps.lamp_at(other_side, perch.place + ahead))
+		to = candidates.find_first(is_far_enough) ?? crash "BirdFlight.flight_from: no lamp within two places is a hop away"
 		BirdFlight.({ from: perch, to })
 	}
 
-	## The tree `flight` leaves, and the one it lands on.
-	trees : BirdFlight -> { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }
-	trees = |BirdFlight.(ends)| ends
+	## The lamp `flight` leaves, and the one it lands on.
+	lamps : BirdFlight -> { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }
+	lamps = |BirdFlight.(ends)| ends
 
 	is_eq : _
 
-	## The flight after `flight`, from the tree it lands on.
+	## The flight after `flight`, from the lamp it lands on.
 	next : BirdFlight -> BirdFlight
 	next = |flight| BirdFlight.flight_from(flight.to)
 
@@ -84,7 +84,7 @@ BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
 	frame_count : U64
 	frame_count = flight_frames.len()
 
-	## How far along its straight line, from the tree it leaves to the one it
+	## How far along its straight line, from the lamp it leaves to the one it
 	## lands on, the bird is `steps_in` steps into a flight: the eased share
 	## its path is drawn by, so a camera that moves by it keeps pace.
 	eased_share_at : U64 -> F64
@@ -103,7 +103,7 @@ BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
 				match flight_frames.get(steps_in) {
 					Ok({ pose, through }) => {
 						pose,
-						location: flight_location({ from: tree_top(flight.from), to: tree_top(flight.to), through }),
+						location: flight_location({ from: lamp_top(flight.from), to: lamp_top(flight.to), through }),
 					}
 					Err(OutOfBounds) => crash "BirdFlight.bird_instant_at: a stage plays past the flight's last frame"
 				}
@@ -114,7 +114,7 @@ BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
 flight_arc : F64
 flight_arc = 5.0
 
-## The bird flies to a tree at least this far along from the one it left,
+## The bird flies to a lamp at least this far along from the one it left,
 ## so that its path runs ahead as well as across the road. The length is
 ## chosen by eye.
 shortest_hop : F64
@@ -124,13 +124,13 @@ shortest_hop = 25.0
 frames_a_half_flap : U64
 frames_a_half_flap = 2
 
-## The bird as it sits on top of `tree`.
-sitting_on : RoadTrees.RoadTree -> BirdFlight.BirdInstant
-sitting_on = |tree| { pose: Perched, location: tree_top(tree) }
+## The bird as it sits on top of `lamp`.
+sitting_on : RoadLamps.RoadLamp -> BirdFlight.BirdInstant
+sitting_on = |lamp| { pose: Perched, location: lamp_top(lamp) }
 
-## The location on top of `tree`.
-tree_top : RoadTrees.RoadTree -> BirdFlight.Location
-tree_top = |tree| { along: tree.along, across: tree.across, lift: tree.conifer.height_metres() }
+## The location on top of `lamp`.
+lamp_top : RoadLamps.RoadLamp -> BirdFlight.Location
+lamp_top = |lamp| { along: lamp.along, across: lamp.across, lift: lamp.lantern.height_metres() }
 
 ## How the bird looks through a flight, a frame a step: a flap side on as it
 ## takes off, seven flaps seen from behind, and a flap's length of diving. The
@@ -142,7 +142,7 @@ flight_poses = [
 	List.repeat(Diving, 2 * frames_a_half_flap),
 ].join()
 
-## One frame of any flight before it is put between two trees: how the bird
+## One frame of any flight before it is put between two lamps: how the bird
 ## looks, and how far through the flight it is.
 FlightFrame : { pose : BirdFlight.BirdPose, through : Fraction }
 
@@ -200,13 +200,13 @@ expect {
 		and [BirdFlight.first, second, third].all(|flight| flight.to.along >= flight.from.along + shortest_hop)
 }
 
-# The bird starts and ends a flight on the treetops, and the arc lifts it
+# The bird starts and ends a flight on the lamp tops, and the arc lifts it
 # halfway.
 expect {
 	flight = BirdFlight.first
 	at_start = flight.bird_instant_at(Playing(0)).location
 	at_end = flight.bird_instant_at(Playing(BirdFlight.frame_count - 1)).location
-	at_start == tree_top(flight.from) and at_end == tree_top(flight.to)
+	at_start == lamp_top(flight.from) and at_end == lamp_top(flight.to)
 }
 expect {
 	from = { along: 0.0, across: -3.5, lift: 6.0 }

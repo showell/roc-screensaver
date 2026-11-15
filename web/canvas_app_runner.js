@@ -21,6 +21,9 @@
 // A page that opens partway lists the words its address may name, as
 // `opensAt: ['trees', 'grass']`, and `?start=grass` opens it at the second.
 //
+// `?step=N` shows the frame after N steps and stops there, so a page can be
+// laid beside the native harness's frame at the same step (`zig build png`).
+//
 // No hint: every game draws the keys it reads in its own HUD, which is the
 // only place that cannot drift from the keys it actually reads.
 //
@@ -451,6 +454,11 @@ async function main(show) {
 
   timer?.loaded(performance.now() - loadStart);
 
+  const still = new URLSearchParams(location.search).get('step');
+  if (still !== null) {
+    for (let k = Number(still); k > 0; k--) step(performance.now());
+  }
+
   loading.remove();
   document.body.appendChild(canvas);
   try {
@@ -459,6 +467,7 @@ async function main(show) {
     stopped(error);
     return;
   }
+  if (still !== null) return;
   last = performance.now();
   requestAnimationFrame(loop);
 }

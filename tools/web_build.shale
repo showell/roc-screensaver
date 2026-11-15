@@ -1,6 +1,6 @@
--- web_build.shale builds the bird screensaver's page into the dev channel,
--- ~/build/roc-apps/next/screensaver-bird/, which roc-apps' dev server serves at
--- http://143.244.172.148:9210/screensaver-bird/.
+-- web_build.shale builds the lanterns screensaver's page into the dev channel,
+-- ~/build/roc-apps/next/lanterns/, which roc-apps' dev server serves at
+-- http://143.244.172.148:9210/lanterns/.
 --
 --   shale tools/web_build.shale
 --
@@ -11,8 +11,8 @@
 -- the page's place only when every step passed, so a failed build leaves the
 -- served page as it was.
 
-const NAME = "bird"
-const DEST = "build:roc-apps/next/screensaver-bird"
+const NAME = "lanterns"
+const DEST = "build:roc-apps/next/lanterns"
 
 -- The pinned compiler, from this repo's roc-version, refused unless it says
 -- it is that pin.
@@ -61,4 +61,4 @@ if exists(DEST) then remove_tree(DEST) end
 copy(staging, DEST)
 remove_tree(staging)
 for p in glob(DEST .. "/*") do print(p) end
-print("dev: http://143.244.172.148:9210/screensaver-bird/")
+print("dev: http://143.244.172.148:9210/lanterns/")

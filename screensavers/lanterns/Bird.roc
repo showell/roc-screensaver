@@ -14,9 +14,10 @@ import StillOnScreen
 
 Bird :: [].{
 
-	## How tall a bird stands in metres, chosen by eye.
+	## How tall a bird stands in metres, chosen by eye: taller than Safari's
+	## 2.2, so the bird is the biggest thing at its depth.
 	height_metres : F64
-	height_metres = 2.2
+	height_metres = 2.8
 
 	## The drawing for a pose.
 	pose_still : BirdFlight.BirdPose -> Still

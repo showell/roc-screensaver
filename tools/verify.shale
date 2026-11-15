@@ -1,22 +1,36 @@
 -- The gate: every check the repo has, one line each with its numbers, run
 -- from the repo's root as `shale tools/verify.shale`. It stops at the first
 -- check that fails.
---   roc fmt --check over platform/ and examples/
---   roc check of the example, held to zero errors and zero warnings by the
---     report's marks, since a warning alone still exits 2
+-- budget: steps=20000000
+--   roc fmt --check over platform/, native/, examples/ and screensavers/
+--   roc check of each root, held to zero errors and zero warnings by the
+--     report's marks, since a warning alone still exits 2: the basic example,
+--     and the lanterns screensaver both ways, natively (main.roc) and as a
+--     page (web.roc)
+--   roc test of the lanterns screensaver, held to exactly `roc_tests_expected`
+--     expects, the adapter's (native/FrameOfShapes.roc) and lib's among them
 --   zig fmt --check over build.zig and host/
 --   zig build, which builds the example's archive and the harness
 --   zig build test, held to exactly `tests_expected` tests
---   the PNG harness over the example: exactly `pngs_expected` PNGs, and
---     the first and last differ; the last one's checksum is shown, the
---     number the Windows headless run on CI should print too
+--   the PNG harness over the lanterns screensaver: exactly `pngs_expected`
+--     PNGs, the first and last differ, and the last one's checksum is
+--     `last_checksum`, the number the Windows headless run on CI prints too
 --   zig build -Dwindows, a cross-build: the Roc builds the x64win archive
 --     and host/win32.zig compiles and links with it for x86_64-windows, as a
 --     GUI program, with a byte-identical .scr beside the .exe. It does not
 --     run the .exe (this box has no Windows); CI's workflow does
+--   tools/web_build.shale, the lanterns page built into the dev channel, held
+--     to the wasm and the files it serves
+--   the live page, loaded from the dev server in headless Chromium
+--     (tools/web_shots.mjs): no console error, and two screenshots 1.5 s
+--     apart with no input differ, so the page animates
 
 const tests_expected = 5
+const roc_tests_expected = 168
 const pngs_expected = 8
+-- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
+-- to the scene, the adapter or the rasterizer moves it, in the same commit.
+const last_checksum = "724b2e2fed290090"
 const png_dir = ".zig-cache/verify-png"
 
 if not exists("platform/main.roc") then
@@ -33,14 +47,28 @@ function line(name, ok, detail, ms)
   if not ok then fail("verify: " .. name .. " failed") end
 end
 
-local r = run({roc, "fmt", "--check", "platform", "examples"}, {timeout_ms = 30000, tail = 20})
-line("roc fmt --check", r.code == 0, #glob("**/*.roc") .. " files, " .. lines(trim(r.out))[1], r.ms)
+const roc_dirs = {"platform", "native", "examples", "screensavers"}
+local fmt_argv = {roc, "fmt", "--check"}
+for d in roc_dirs do push(fmt_argv, d) end
+local r = run(fmt_argv, {timeout_ms = 30000, tail = 20})
+local formatted = 0
+for d in roc_dirs do formatted = formatted + #glob(d .. "/**/*.roc") end
+line("roc fmt --check", r.code == 0, formatted .. " files, " .. lines(trim(r.out))[1], r.ms)
 
-r = run({roc, "check", "examples/basic/main.roc"}, {timeout_ms = 60000, whole = 200000})
-local errors = #find_all(r.out, "── ✗")
-local warnings = #find_all(r.out, "── ●")
-if errors + warnings > 0 then print(r.out) end
-line("roc check", errors == 0 and warnings == 0, errors .. " errors, " .. warnings .. " warnings", r.ms)
+for root in {"examples/basic/main.roc", "screensavers/lanterns/main.roc", "screensavers/lanterns/web.roc"} do
+  r = run({roc, "check", root}, {timeout_ms = 60000, whole = 200000})
+  local errors = #find_all(r.out, "── ✗")
+  local warnings = #find_all(r.out, "── ●")
+  if errors + warnings > 0 then print(r.out) end
+  line("roc check " .. root, errors == 0 and warnings == 0, errors .. " errors, " .. warnings .. " warnings", r.ms)
+end
+
+r = run({roc, "test", "screensavers/lanterns/main.roc"}, {timeout_ms = 100000, tail = 40})
+local all_passed = re_find(r.out, "All \\((\\d+)\\) tests passed")
+local roc_ran = 0
+if all_passed ~= nil then roc_ran = parse_int(all_passed.group) end
+if r.code ~= 0 or roc_ran ~= roc_tests_expected then print(r.out) end
+line("roc test", r.code == 0 and roc_ran == roc_tests_expected, roc_ran .. " passed, " .. roc_tests_expected .. " expected", r.ms)
 
 r = run({"zig", "fmt", "--check", "build.zig", "host"}, {timeout_ms = 30000, tail = 20})
 if r.code ~= 0 then print(r.out) end
@@ -71,8 +99,9 @@ local differ = #pngs == pngs_expected and read(first) ~= read(last)
 local said = "the first and last differ"
 if not differ then said = "the first and last are the same" end
 local sum = re_find(r.out, "checksum ([0-9a-f]{16})")
-if sum ~= nil then said = said .. ", the last's checksum " .. sum.group end
-line("png harness", r.code == 0 and #pngs == pngs_expected and differ and sum ~= nil, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
+local same_sum = sum ~= nil and sum.group == last_checksum
+if sum ~= nil then said = said .. ", the last's checksum " .. sum.group .. ", " .. last_checksum .. " expected" end
+line("png harness", r.code == 0 and #pngs == pngs_expected and differ and same_sum, #pngs .. " PNGs, " .. pngs_expected .. " expected; " .. said, r.ms)
 
 const exe = "zig-out/bin/screensaver.exe"
 const scr = "zig-out/bin/screensaver.scr"
@@ -91,3 +120,24 @@ if built then
   if not same then kind = kind .. ", the .scr differs" end
 end
 line("zig build -Dwindows", r.code == 0 and pe and same, kind, r.ms)
+
+r = run({"shale", "tools/web_build.shale"}, {timeout_ms = 300000, tail = 20})
+local served = "build:roc-apps/next/lanterns"
+local pieces = 0
+for f in {"index.html", "lanterns.wasm", "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"} do
+  if exists(served .. "/" .. f) then pieces = pieces + 1 end
+end
+if r.code ~= 0 or pieces ~= 5 then print(r.out) end
+line("web build", r.code == 0 and pieces == 5, pieces .. " of 5 files served at http://143.244.172.148:9210/lanterns/", r.ms)
+
+const shots = ".zig-cache/verify-web"
+if exists(shots) then remove_tree(shots) end
+r = run({"node", "tools/web_shots.mjs", "http://143.244.172.148:9210/lanterns/", shots, "200", "1700"},
+  {timeout_ms = 60000, tail = 20, want = "web-shots: headless Chromium over DevTools, as tools/web_shots.mjs says"})
+local early = shots .. "/at_00200ms.png"
+local late = shots .. "/at_01700ms.png"
+local moved = exists(early) and exists(late) and read(early) ~= read(late)
+if r.code ~= 0 or not moved then print(r.out) end
+local seen = "the two shots are the same"
+if moved then seen = "the shots 1.5 s apart differ" end
+line("live page", r.code == 0 and moved, seen, r.ms)

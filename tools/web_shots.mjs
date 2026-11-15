@@ -4,6 +4,11 @@
 // failed request or a canvas that never paints.
 //
 //   node tools/web_shots.mjs <page url> <shots folder> <ms after first paint>...
+//   node tools/web_shots.mjs <page url> <shots folder> step=<N>...
+//
+// A `step=N` shot loads the page at `?step=N`, which stops on the frame after
+// N steps, and saves the canvas alone at its own size as step-NNN.png, the
+// name `zig build png -- <dir> N` gives the native frame at that step.
 //
 // There is no Playwright package on the box, so this speaks the browser's
 // DevTools protocol over the WebSocket that Node has built in, as roc-apps'
@@ -24,7 +29,7 @@ const failures = [];
 function startBrowser(profile) {
   const browser = spawn(CHROME, [
     "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
-    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--window-size=1000,640", "about:blank",
+    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--window-size=1000,700", "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const address = new Promise((found, refused) => {
     let said = "";
@@ -104,18 +109,34 @@ try {
   link.on("Network.responseReceived", ({ response }) => { if (response.status >= 400) failures.push(`${response.status} for ${response.url}`); });
   link.on("Network.loadingFailed", ({ canceled, errorText }) => { if (!canceled) failures.push(`a request failed: ${errorText}`); });
   for (const domain of ["Page", "Runtime", "Network"]) await page.send(`${domain}.enable`, {}, page.session);
-  await page.send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 640, deviceScaleFactor: 1, mobile: false }, page.session);
+  // 700 high, so a 600-high canvas within the runner's 88vh is drawn at its own size.
+  await page.send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false }, page.session);
+  const steps = times.filter((t) => t.startsWith("step="));
+  for (const step of steps.map((t) => Number(t.slice(5)))) {
+    const shown = new Promise((done) => link.on("Page.loadEventFired", done));
+    await page.send("Page.navigate", { url: `${url}?step=${step}` }, page.session);
+    await shown;
+    const still = await evaluate(page, FIRST_PAINT);
+    if (still.missing) { failures.push(`step ${step}: the canvas never painted`); continue; }
+    const box = await evaluate(page, "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; })()");
+    const { data } = await page.send("Page.captureScreenshot", { format: "png", clip: { ...box, scale: 1 } }, page.session);
+    const path = join(shots, `step-${String(step).padStart(3, "0")}.png`);
+    writeFileSync(path, Buffer.from(data, "base64"));
+    console.log(`shot ${path}, the canvas ${box.width} by ${box.height}`);
+  }
   const loaded = new Promise((done) => link.on("Page.loadEventFired", done));
   await page.send("Page.navigate", { url }, page.session);
   await loaded;
-  const first = await evaluate(page, FIRST_PAINT);
-  if (first.missing) {
+  const first = steps.length === times.length ? { skipped: true } : await evaluate(page, FIRST_PAINT);
+  if (first.skipped) {
+    // Only stills were asked for.
+  } else if (first.missing) {
     failures.push("the canvas never painted a frame");
   } else {
     const navStart = await evaluate(page, "performance.timeOrigin + 0");
     console.log(`first painted frame ${Math.round(first.painted)} ms after navigation, ${first.colours} colours sampled (origin ${Math.round(navStart)})`);
     const shotStart = Date.now();
-    for (const at of times.map(Number)) {
+    for (const at of times.filter((t) => !t.startsWith("step=")).map(Number)) {
       const wait = at - (Date.now() - shotStart);
       if (wait > 0) await sleep(wait);
       const { data } = await page.send("Page.captureScreenshot", { format: "png" }, page.session);

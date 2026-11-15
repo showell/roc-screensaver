@@ -1,6 +1,11 @@
 # The basic example: a sky with a sun going down, hills, a road, and a few
 # shapes that move a little each step, so that no two frames are alike. It
 # fills one shape of each kind the platform paints.
+#
+# It is the host tests' fixture (host/screensaver_test.zig), not a
+# screensaver: the tests know its every shape and word by heart, which they
+# could not of a scene built through the adapter, and it reaches the raster's
+# own sky and sun, which no canvas app does.
 app [Model, program] { pf: platform "../../platform/main.roc" }
 
 import pf.Frame
