@@ -1,7 +1,7 @@
 ## A Roc bird's flight down the endless road: the lamp it leaves, and the one
 ## it flies to, and where it is and how it looks along the way. The bird sits on
-## its perch, then flies diagonally ahead, across the road, to the first lamp on
-## the other side far enough along, and perches there. The next flight starts
+## its perch, then flies diagonally ahead, across the road, to the lamp one
+## place further on along the other side, and perches there. The next flight starts
 ## from that lamp and crosses back, so the bird zigzags down the road for ever.
 ##
 ## This file is adapted from roc-apps (`canvas_apps/safari/BirdFlight.roc`) on
@@ -48,18 +48,12 @@ BirdFlight := { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }.{
 	first : BirdFlight
 	first = BirdFlight.flight_from(RoadLamps.lamp_at(Left, 0))
 
-	## The flight of a bird perched on `perch`: to the first lamp on the other
-	## side of the road far enough along.
+	## The flight of a bird perched on `perch`: to the lamp one place on, on
+	## the other side of the road. Every hop is one place, so the bird's
+	## progress down the road never strays from an even pace by more than two
+	## nudges, and a camera at a constant speed keeps it in view.
 	flight_from : RoadLamps.RoadLamp -> BirdFlight
-	flight_from = |perch| {
-		other_side = RoadLamps.other_side(perch.side)
-		is_far_enough = |lamp| lamp.along >= perch.along + shortest_hop
-		# A lamp two places on is at least 60 m less two nudges along, past
-		# the shortest hop, so one of these three is always far enough.
-		candidates = [0, 1, 2].map(|ahead| RoadLamps.lamp_at(other_side, perch.place + ahead))
-		to = candidates.find_first(is_far_enough) ?? crash "BirdFlight.flight_from: no lamp within two places is a hop away"
-		BirdFlight.({ from: perch, to })
-	}
+	flight_from = |perch| BirdFlight.({ from: perch, to: RoadLamps.lamp_at(RoadLamps.other_side(perch.side), perch.place + 1) })
 
 	## The lamp `flight` leaves, and the one it lands on.
 	lamps : BirdFlight -> { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }
@@ -84,16 +78,6 @@ BirdFlight := { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }.{
 	frame_count : U64
 	frame_count = flight_frames.len()
 
-	## How far along its straight line, from the lamp it leaves to the one it
-	## lands on, the bird is `steps_in` steps into a flight: the eased share
-	## its path is drawn by, so a camera that moves by it keeps pace.
-	eased_share_at : U64 -> F64
-	eased_share_at = |steps_in|
-		match flight_frames.get(steps_in) {
-			Ok({ through, .. }) => Easing.smoothstep(through).to_f64()
-			Err(OutOfBounds) => crash "BirdFlight.eased_share_at: a step past the flight's last frame"
-		}
-
 	## The bird at `stage` of its flight.
 	bird_instant_at : BirdFlight, BirdFlight.Stage -> BirdFlight.BirdInstant
 	bird_instant_at = |flight, stage|
@@ -113,12 +97,6 @@ BirdFlight := { from : RoadLamps.RoadLamp, to : RoadLamps.RoadLamp }.{
 ## How far above a straight line the top of its path is, chosen by eye.
 flight_arc : F64
 flight_arc = 5.0
-
-## The bird flies to a lamp at least this far along from the one it left,
-## so that its path runs ahead as well as across the road. The length is
-## chosen by eye.
-shortest_hop : F64
-shortest_hop = 25.0
 
 ## How many steps each half of a flap of the wings takes, up or down.
 frames_a_half_flap : U64
@@ -190,14 +168,19 @@ expect BirdFlight.frame_count == 36
 expect flight_poses.first() == Ok(Side(WingsUp))
 expect flight_poses.last() == Ok(Diving)
 
-# The flights alternate sides, each hop at least the shortest one ahead.
+# The flights alternate sides, each a place on, so each runs ahead by the
+# spacing less two nudges at least.
 expect {
 	second = BirdFlight.first.next()
 	third = second.next()
 	BirdFlight.first.heading() == Rightward
 		and second.heading() == Leftward
 		and third.heading() == Rightward
-		and [BirdFlight.first, second, third].all(|flight| flight.to.along >= flight.from.along + shortest_hop)
+		and [BirdFlight.first, second, third].all(
+			|flight|
+				flight.to.place == flight.from.place + 1
+					and flight.to.along >= flight.from.along + RoadLamps.lamp_spacing - 2.0 * RoadLamps.most_nudge,
+		)
 }
 
 # The bird starts and ends a flight on the lamp tops, and the arc lifts it

@@ -41,7 +41,7 @@ RoadLamps :: [].{
 		{
 			side,
 			place,
-			along: first_along + place.to_f64() * lamp_spacing + nudge,
+			along: RoadLamps.even_along(place) + nudge,
 			across,
 			lantern: lantern_at(place),
 		}
@@ -61,6 +61,14 @@ RoadLamps :: [].{
 		$lamps.keep_if(is_in_range)
 	}
 
+	## Where the pair at `place` would stand along the road with no nudge.
+	even_along : U64 -> F64
+	even_along = |place| first_along + place.to_f64() * RoadLamps.lamp_spacing
+
+	## How far apart the pairs stand along the road, chosen by eye.
+	lamp_spacing : F64
+	lamp_spacing = 30.0
+
 	## The side across the road from `side`.
 	other_side : RoadLamps.Side -> RoadLamps.Side
 	other_side = |side|
@@ -79,10 +87,6 @@ RoadLamps :: [].{
 	lamp_line_distance : F64
 	lamp_line_distance = 3.5
 }
-
-## How far apart the pairs stand along the road, chosen by eye.
-lamp_spacing : F64
-lamp_spacing = 30.0
 
 ## Where the first pair stands along the road.
 first_along : F64
@@ -122,7 +126,7 @@ lamp_key = |side, place|
 ## place for any `along` before it.
 place_at_or_before : F64 -> U64
 place_at_or_before = |along| {
-	steps = (along - first_along) / lamp_spacing
+	steps = (along - first_along) / RoadLamps.lamp_spacing
 	if steps <= 0.0 {
 		0
 	} else {
@@ -157,7 +161,7 @@ expect
 		|place| {
 			left = RoadLamps.lamp_at(Left, place)
 			right = RoadLamps.lamp_at(Right, place)
-			even = first_along + place.to_f64() * lamp_spacing
+			even = RoadLamps.even_along(place)
 			left.across < 0.0
 				and right.across > 0.0
 				and (left.along - even).abs() <= RoadLamps.most_nudge

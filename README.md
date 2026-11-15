@@ -9,12 +9,20 @@ memory, and paints it with a software rasterizer copied from angry-gopher.
 ## The lanterns screensaver
 
 `screensavers/lanterns/` is the screensaver: the Roc bird, Safari's bird and
-flight, hopping from lamp to lamp down an endless road at dusk, crossing it
-each way in turn, with the camera following. The sky, the setting sun and the
-mountains come from the basic example; the lamps, their halos, the pools of
-light they throw on the road and the fireflies over the verges are its own.
-A soft light stays on the bird, and the bird is drawn a little larger than
-Safari's, so it is the brightest and biggest thing at its depth.
+flight, hopping from lamp to lamp down an endless road at an early dusk,
+crossing it each way in turn, each hop one lamp further on. The camera
+moves down the road at one constant speed, the bird's pace over a leg, so the
+bird draws ahead through each flight and the camera catches up through each
+perch. The lamps, their halos and the pools of light they throw on the road
+are its own; the bird is drawn a little larger than Safari's.
+
+The scene runs in a cycle (`Sunset.roc`, and the counts in `LanternsApp.roc`).
+The sun goes down a straight path over forty crossings (40 legs of 66 steps,
+2640 steps, about 88 seconds) and sets behind the far range's ridge, which is
+drawn over it; the sky, the land and the road ease toward dusk with it, and
+the lamps' halos and pools grow a little stronger. Once the sun is hidden the
+scene holds for one perch (30 steps), then the whole model starts again from
+its first frame, road, bird, camera and sun, so every cycle is the same.
 
 One app value, `LanternsApp.canvas_app` (a lib `CanvasApp`), runs both ways:
 
@@ -38,7 +46,10 @@ the same colours, and is the one Safari's native build would use:
 
 - **Flat**: opaque, `Solid`; translucent, a `Linear` whose two stops are that
   colour (the same everywhere); unseen, nothing. On a disc, raster.zig's own
-  disc with its alpha.
+  disc with its alpha. The lanterns paint no flat disc (a globe falls back to
+  one only when too thin to shade, which no lamp is), so this path is held
+  only by the adapter's own expect, and raster.zig's disc only by the basic
+  example, which draws `Frame`'s `Disc` directly.
 - **Span**: `Round`, when the span covers the region's own width and both
   colours are opaque, as `Brush.width_shade` makes it; any other span, two
   halves cut at its middle, each a `Linear` from the edge colour to the middle.
@@ -67,9 +78,10 @@ What raster.zig cannot do, approximated or refused:
 
 ## Status (2026-11-15)
 
-The lanterns screensaver is new today. Its page builds into the dev channel
-and animates there, and the native PNG frames and the page's stills at the
-same steps look the same to the eye. The Windows build compiles it; whether
+The lanterns screensaver is new today, with its sunset cycle and its
+constant-speed camera. Its page builds into the dev channel and animates
+there, and the native PNG frames and the page's stills at the same steps
+(the first, and near the set) look the same to the eye. The Windows build compiles it; whether
 it holds 30 frames a second as a real screensaver is untested, since its sky
 and halos are gradients over most of the screen. The basic example stays as
 the host tests' fixture.

@@ -17,9 +17,10 @@ LampShapes :: [].{
 	Upright : { foot : Point, height_on_screen : Pixels }
 
 	## The lamp standing at `upright`: its halo, post, cap and globe, in the
-	## order they are painted.
-	lamp_shapes : LampShapes.Upright, Lantern -> List(Shapes.Shape)
-	lamp_shapes = |upright, lantern| {
+	## order they are painted. Its halo is a little stronger as `dusk` nears 1,
+	## since a lamp shows more as the light goes.
+	lamp_shapes : LampShapes.Upright, { lantern : Lantern, dusk : Fraction } -> List(Shapes.Shape)
+	lamp_shapes = |upright, { lantern, dusk }| {
 		h = upright.height_on_screen.to_f64()
 		x = upright.foot.x.to_f64()
 		top = upright.foot.y.to_f64() - h
@@ -29,7 +30,7 @@ LampShapes :: [].{
 		glow = lantern.glow_color()
 		halo = Shapes.halo(
 			{ center: Point.at(x, globe_y), radius: Pixels.of(globe_radius * halo_reach) },
-			Brush.with_alpha(glow, 0.42),
+			Brush.with_alpha(glow, 0.36 + 0.12 * dusk.to_f64()),
 		)
 		post_half = (h * post_share / 2.0).max(0.5)
 		post_left = Pixels.of(x - post_half)
@@ -102,7 +103,7 @@ globe_fill = |{ x, y, radius }, glow| {
 
 # A lamp is four shapes, and its cap's top is the lamp's height above its foot.
 expect {
-	shapes = LampShapes.lamp_shapes({ foot: Point.at(480.0, 500.0), height_on_screen: Pixels.of(200.0) }, Lantern.Amber)
+	shapes = LampShapes.lamp_shapes({ foot: Point.at(480.0, 500.0), height_on_screen: Pixels.of(200.0) }, { lantern: Lantern.Amber, dusk: Fraction.zero })
 	top_y =
 		match shapes.get(2) {
 			Ok(Quad(q)) => q.first.y.to_f64()
