@@ -8,3 +8,4 @@
 # its web.roc; and, the rest of the line, the keyboard help its page shows
 # under the canvas, made from the app's controls.
 lanterns a153a4366764142f 233 227 Space pauses and resumes · R restarts at dawn · → skips ahead a crossing
+bubbles fedd5de9d0e9bd86 124 118 Space pauses and resumes · R restarts
