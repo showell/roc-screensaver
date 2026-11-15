@@ -1,0 +1,64 @@
+-- web_build.shale builds the bird screensaver's page into the dev channel,
+-- ~/build/roc-apps/next/screensaver-bird/, which roc-apps' dev server serves at
+-- http://143.244.172.148:9210/screensaver-bird/.
+--
+--   shale tools/web_build.shale
+--
+-- It builds the wasm host (web/platform/host.zig, against the roc checkout's
+-- builtins, with Zig 0.16 as roc-apps does), then the app's wasm with the
+-- pinned Roc on the dev backend, then roc_glue.js from the platform's type
+-- table with the same compiler. Everything goes to a staging folder that takes
+-- the page's place only when every step passed, so a failed build leaves the
+-- served page as it was.
+
+const NAME = "bird"
+const DEST = "build:roc-apps/next/screensaver-bird"
+
+-- The pinned compiler, from this repo's roc-version, refused unless it says
+-- it is that pin.
+function pinned_roc()
+  local pin = trim(read("roc-version"))
+  local roc = real("tools:roc-" .. pin .. "/roc")
+  local v = must(run({roc, "version"}, {timeout_ms = 10000, tail = 2}))
+  if trim(v.out) ~= "Roc compiler version " .. pin then fail("web_build: " .. roc .. " says " .. trim(v.out) .. ", not " .. pin) end
+  return roc
+end
+
+-- Roc exits non-zero for a warning, so a build's verdict is its marks.
+function marks_of(out)
+  return #find_all(out, "✗") + #find_all(out, "●")
+end
+
+local roc = pinned_roc()
+local staging = DEST .. ".staging"
+if exists(staging) then remove_tree(staging) end
+mkdir(staging)
+
+local host = must(run({real("zig016:zig"), "build", "-Droc=" .. real("repos:roc"),
+  "--cache-dir", real("build:roc-screensaver/zig-cache"), "--global-cache-dir", real("build:zig-global")},
+  {cwd = "web", timeout_ms = 300000, tail = 30}))
+print("host: " .. host.ms .. " ms")
+
+local wasm = run({roc, "build", "web.roc", "--target=wasm32", "--opt=dev", "--output=" .. real(staging) .. "/" .. NAME .. ".wasm"},
+  {cwd = "screensavers/" .. NAME, timeout_ms = 300000, tail = 60})
+if marks_of(wasm.out) > 0 or not exists(staging .. "/" .. NAME .. ".wasm") then
+  print(wasm.out)
+  fail("web_build: the wasm build failed")
+end
+print("wasm: " .. wasm.ms .. " ms, " .. stat(staging .. "/" .. NAME .. ".wasm").size .. " bytes")
+
+local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), "web/platform/main.roc"},
+  {timeout_ms = 120000, tail = 30}))
+if not exists(staging .. "/roc_glue.js") then print(glue.out) fail("web_build: glue wrote no roc_glue.js") end
+print("glue: " .. glue.ms .. " ms")
+
+copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
+copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
+copy("screensavers/" .. NAME .. "/page.html", staging .. "/index.html")
+create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt dev\n")
+
+if exists(DEST) then remove_tree(DEST) end
+copy(staging, DEST)
+remove_tree(staging)
+for p in glob(DEST .. "/*") do print(p) end
+print("dev: http://143.244.172.148:9210/screensaver-bird/")

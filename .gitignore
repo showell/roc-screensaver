@@ -1,3 +1,6 @@
 .zig-cache/
 zig-out/
 out/
+tools/web_shots/
+web/platform/targets/
+web/zig-out/

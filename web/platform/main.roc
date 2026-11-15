@@ -1,0 +1,71 @@
+# The canvas_apps platform: what a page needs from any game, over one boxed model
+# the host keeps (host.zig).
+#
+# Eleven functions. `model_at_next_step` takes one Input.Snapshot, flattened into numbers
+# because the wasm edge has no records, and `sounds` reports a bit per tone for
+# the speaker.
+#
+# This file is copied from roc-apps (`canvas_apps/web/platform/main.roc`) on 2026-11-15, and it
+# is allowed to drift from it.
+platform ""
+	requires {
+		[Model : model] for program : {
+			init : {} -> Box(model),
+			model_at_next_step : Box(model), U32, U32, U32, U32, F32, F32, F32 -> Box(model),
+			frame_shapes : Box(model) -> List(Shapes.Shape),
+			release : List(Shapes.Shape) -> {},
+			sounds : Box(model) -> U32,
+			tone_count : {} -> U32,
+			tone_freq : U32 -> U32,
+			tone_ms : U32 -> U32,
+			width : {} -> U32,
+			height : {} -> U32,
+			fps : {} -> U32,
+		}
+	}
+	exposes []
+	packages { lib: "../../lib/main.roc" }
+	provides {
+		"roc_advance": advance_for_host,
+		"roc_fps": fps_for_host,
+		"roc_frame": frame_for_host,
+		"roc_height": height_for_host,
+		"roc_init": init_for_host,
+		"roc_release": release_for_host,
+		"roc_sounds": sounds_for_host,
+		"roc_tone_count": tone_count_for_host,
+		"roc_tone_freq": tone_freq_for_host,
+		"roc_tone_ms": tone_ms_for_host,
+		"roc_width": width_for_host,
+	}
+	targets: {
+		inputs_dir: "targets/",
+		wasm32: {
+			inputs: ["host.wasm", app],
+			exports: ["computeFrame", "advance", "sounds", "toneCount", "toneFreq", "toneMs", "width", "height", "fps"],
+		},
+	}
+
+import lib.Shapes
+
+init_for_host = program.init
+
+advance_for_host = program.model_at_next_step
+
+frame_for_host = program.frame_shapes
+
+release_for_host = program.release
+
+sounds_for_host = program.sounds
+
+tone_count_for_host = program.tone_count
+
+tone_freq_for_host = program.tone_freq
+
+tone_ms_for_host = program.tone_ms
+
+width_for_host = program.width
+
+height_for_host = program.height
+
+fps_for_host = program.fps
