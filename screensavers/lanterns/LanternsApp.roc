@@ -3,7 +3,7 @@
 ## camera following it. It is made for Roc's 0.1.0 launch. Each lamp throws a
 ## pool of light on the road; the cycle opens at dawn with the sun behind the
 ## mountains, the sun peeks over them after three of the bird's crossings and
-## climbs on, and the scene brightens all the way to the cycle's end, thirteen
+## climbs on, and the scene brightens all the way to the cycle's end, twenty
 ## crossings and a perch later, when it starts again from its first frame, so
 ## the cycle repeats exactly.
 ##
@@ -96,10 +96,10 @@ perch_steps = 30
 leg_steps : U64
 leg_steps = perch_steps + BirdFlight.frame_count
 
-## The cycle runs over this many whole crossings, a leg each: about 30 s, short
+## The cycle runs over this many whole crossings, a leg each: about 45 s, short
 ## enough to watch it come round, long enough that the rise is not rushed.
 rising_crossings : U64
-rising_crossings = 13
+rising_crossings = 20
 
 ## How many steps the cycle takes past its crossings: one perch, so the bird
 ## sits on its lamp at the end and the scene starts again just as it would
@@ -475,9 +475,9 @@ expect (camera_at(leg_steps).along() - camera_at(0).along() - RoadLamps.lamp_spa
 expect (camera_at(2 * leg_steps).along() - camera_at(leg_steps).along() - RoadLamps.lamp_spacing).abs() < 1.0e-9
 expect camera_at(0).along() == RoadLamps.even_along(0) - follow_distance
 
-# The cycle is thirteen legs and a closing perch, and it starts again from the
+# The cycle is twenty legs and a closing perch, and it starts again from the
 # first model on its last step and not a step before.
-expect cycle_steps == 13 * 66 + 30
+expect cycle_steps == 20 * 66 + 30
 expect {
 	last = { flight: BirdFlight.first, steps_into_leg: 29, steps: cycle_steps - 1 }
 	scene_at_next_step(last) == first_scene
@@ -571,6 +571,9 @@ expect {
 
 # The day runs from 0 at dawn and grows at every step, up to the last.
 expect day_at(0) == Fraction.zero
+# Sunrise's expects pin the sun's first peek and its clearing at steps of a
+# 1350-step cycle, which is the day this one gives at those steps.
+expect day_at(199) == Fraction.of(199.0 / 1350.0) and day_at(765) == Fraction.of(765.0 / 1350.0)
 expect day_at(cycle_steps / 2) == Fraction.of(0.5)
 expect day_at(cycle_steps - 2) < day_at(cycle_steps - 1) and day_at(cycle_steps - 1) != Fraction.whole
 

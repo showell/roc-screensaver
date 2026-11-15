@@ -18,12 +18,12 @@ are its own; the bird is drawn at 4.2 m, nearly twice Safari's 2.2, in every
 pose.
 
 The scene runs in a cycle (`Sunrise.roc`, and the counts in
-`LanternsApp.roc`) of thirteen crossings and a closing perch: 13 legs of 66
-steps and 30 more, 888 steps, about 30 seconds. It opens at dawn with the sun
+`LanternsApp.roc`) of twenty crossings and a closing perch: 20 legs of 66
+steps and 30 more, 1350 steps, 45 seconds. It opens at dawn with the sun
 hidden behind the far range's ridge, which is drawn over it, in the notch at
 its lowest point; the sun climbs a straight path out of the notch, first
-peeks over the ridge at step 200, just after the third crossing, and is clear
-of it about 0.6 of the way through. The sky, the range, the hills, the grass
+peeks over the ridge at step 199, just after the third crossing, and is clear
+of it at step 765, about 0.57 of the way through. The sky, the range, the hills, the grass
 and the road brighten at an even pace with it, to the last step, while the
 lamps' halos and pools, strongest at dawn, ease off (they stay faintly lit).
 The grass is a fresh green throughout, dusky enough at dawn for the pools to

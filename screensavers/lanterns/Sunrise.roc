@@ -83,12 +83,13 @@ horizon_below = 381.0
 sun_radius_f64 : F64
 sun_radius_f64 = 38.0
 
-## Where the sun starts the cycle: under the notch at (560, 232), deep enough
-## that it stays wholly hidden for the cycle's first three crossings (198 of
-## its 888 steps) and first peeks over the ridge two steps later, chosen by
-## sweeping the path step by step.
+## Where the sun starts the cycle: just under the notch at (560, 232), deep
+## enough that it stays wholly hidden for the cycle's first three crossings
+## (198 of its 1350 steps) and first peeks over the ridge at the next step,
+## chosen by sweeping the path step by step. It lies on the straight line to
+## `sun_end`, so the rise keeps its path however long the cycle.
 sun_start : { x : F64, y : F64 }
-sun_start = { x: 560.0, y: 325.0 }
+sun_start = { x: 553.0, y: 301.0 }
 
 ## Where it ends, high in the sky left of the notch, chosen by eye.
 sun_end : { x : F64, y : F64 }
@@ -155,14 +156,15 @@ sun_against_ridge = |center| {
 }
 
 # The sun starts wholly behind the ridge and stays there through the first
-# three crossings of the cycle's thirteen and a perch (198 of its 888 steps,
-# 0.223 of the day), peeks over it just after (step 206 is 0.232), climbs
-# clear of it about 0.6 of the way, and is clear at the end.
+# three crossings of the cycle's twenty and a perch (198 of its 1350 steps),
+# peeks over it at the next step, climbs clear of it at step 765, about 0.57
+# of the way, and is clear at the end. Each boundary is pinned at the step
+# either side of it, as `LanternsApp.day_at` reads a step.
 expect sun_against_ridge(sun_center_at(Fraction.zero)) == Hidden
-expect sun_against_ridge(sun_center_at(Fraction.of(0.222))) == Hidden
-expect sun_against_ridge(sun_center_at(Fraction.of(0.232))) == Touching
-expect sun_against_ridge(sun_center_at(Fraction.of(0.55))) == Touching
-expect sun_against_ridge(sun_center_at(Fraction.of(0.65))) == Clear
+expect sun_against_ridge(sun_center_at(Fraction.of(198.0 / 1350.0))) == Hidden
+expect sun_against_ridge(sun_center_at(Fraction.of(199.0 / 1350.0))) == Touching
+expect sun_against_ridge(sun_center_at(Fraction.of(764.0 / 1350.0))) == Touching
+expect sun_against_ridge(sun_center_at(Fraction.of(765.0 / 1350.0))) == Clear
 expect sun_against_ridge(sun_center_at(Fraction.whole)) == Clear
 
 # The ridge is read between its points, and is the points themselves at them.
