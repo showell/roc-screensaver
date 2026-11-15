@@ -34,6 +34,22 @@ expect holds it clear of the sun's disc, and at least 20 pixels above the
 bird, at every step it is in view. The letters are strokes from
 `lib/Font.roc`, since the native painter has no `Text`.
 
+## The fly-by
+
+Once the banner is gone, five small jets in a V, deep blue with yellow trim
+and no markings, fly over the camera from behind it and streak away up the
+sky to the right (`JetFlyBy.roc`). They come in over the top edge at step
+1276 (about 42.5 s), large and close, fly 10 m a step on a straight climbing
+path, and shrink to specks as they near a point in the sky right of the sun
+and well above the ridge, trailing pale smoke. They fade over the pass's last
+14 steps and are gone at step 1340, ten steps before the rewind. Each corner
+is seen through `RoadCamera`'s own projection, from a path laid out where the
+camera stands; each jet is drawn level, belly to the camera, since in the
+plane of its climb it would be seen edge on. The jets are sorted among the
+lamps and the bird by their distance, and an expect holds all of their
+drawing above the ridge's highest peak and at least 20 pixels above the
+bird's at every step of the pass.
+
 ## The keys
 
 The app reads its keys from its step's `Input.Snapshot`, so they work the

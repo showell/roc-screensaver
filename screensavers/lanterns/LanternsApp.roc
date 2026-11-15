@@ -23,6 +23,7 @@
 import BannerPlane
 import Bird
 import BirdFlight
+import JetFlyBy
 import LampShapes
 import RoadCamera
 import RoadLamps
@@ -78,8 +79,11 @@ LanternsApp :: [].{
 		drawn_lamps = lamps.keep_oks(|lamp| drawn_lamp(camera, { lamp, day }))
 		bird = flight.bird_instant_at(flight_stage(steps_into_leg))
 		drawn_bird = drawn_bird_of(camera, { bird, flight })
+		# The jets are sorted by their distance too, so a lamp the camera is
+		# passing paints over a jet farther off.
+		drawn_jets = JetFlyBy.jets_at(steps)
 		# Farthest first, so a nearer thing paints over a farther one.
-		by_distance = drawn_lamps.concat(drawn_bird).sort_with(
+		by_distance = drawn_lamps.concat(drawn_bird).concat(drawn_jets).sort_with(
 			|a, b|
 				if a.forward > b.forward {
 					Before
@@ -597,23 +601,17 @@ expect {
 	var $first_in_view = cycle_steps
 	var $last_in_view = 0
 	for _step in 0..<cycle_steps {
-		{ flight, steps_into_leg, steps } = $model.scene
+		steps = $model.scene.steps
 		plane_corners = BannerPlane.shapes_at(steps).join_map(|shape| Shapes.region_corners(shape) ?? crash "every part of the plane has corners")
 		if !plane_corners.is_empty() {
 			left = plane_corners.fold(1.0e9, |a, c| a.min(c.x.to_f64()))
 			right = plane_corners.fold(-1.0e9, |a, c| a.max(c.x.to_f64()))
 			top = plane_corners.fold(1.0e9, |a, c| a.min(c.y.to_f64()))
 			bottom = plane_corners.fold(-1.0e9, |a, c| a.max(c.y.to_f64()))
-			camera = camera_at(steps)
-			bird = flight.bird_instant_at(flight_stage(steps_into_leg))
-			gap = bird.location.along - camera.along()
-			bird_corners = Bird.pose_still(bird.pose).polygons().join_map(|polygon| polygon.points)
-			bird_rise = bird_corners.fold(0.0, |most, corner| most.max(corner.y))
-			bird_height = RoadCamera.size_on_screen({ height: Bird.height_metres, forward: gap }).to_f64()
 			bird_clear =
-				match camera.project(bird.location) {
-					Ok(foot) => bottom + 20.0 < foot.y.to_f64() - bird_height * bird_rise
-					Err(BehindCamera) => Bool.True
+				match bird_drawing_top($model.scene) {
+					Top(bird_top) => bottom + 20.0 < bird_top
+					Unseen => Bool.True
 				}
 			sun = Sunrise.light_at(day_at(steps)).sun_center
 			r = Sunrise.sun_radius.to_f64()
@@ -633,6 +631,79 @@ expect {
 		$model = model_at_next_step($model, Input.none)
 	}
 	$touches == 0 and $in_view == 774 and $first_in_view == 400 and $last_in_view == 1173
+}
+
+# Through the whole cycle the jets fly from step 1276 to 1339, five of them at
+# every step of it, ten steps before the rewind. All of their drawing, their
+# trails too, stays at least 20 pixels above the top of the bird's drawing and
+# above the far range's highest peak, so they never cross the bird or the
+# mountains, and some of it is on the screen at every step.
+expect {
+	ridge_top = Sunrise.far_range.fold(1.0e9, |a, c| a.min(c.y.to_f64()))
+	var $model = first_model
+	var $in_view = 0
+	var $fives = 0
+	var $touches = 0
+	var $first_in_view = cycle_steps
+	var $last_in_view = 0
+	for _step in 0..<cycle_steps {
+		steps = $model.scene.steps
+		jets = JetFlyBy.jets_at(steps)
+		if !jets.is_empty() {
+			jet_shapes = jets.join_map(|jet| jet.shapes)
+			corners = jet_shapes.join_map(|shape| Shapes.region_corners(shape) ?? crash "every part of a jet has corners")
+			bottom = corners.fold(-1.0e9, |a, c| a.max(c.y.to_f64()))
+			on_screen = corners.any(|c| c.x.to_f64() >= 0.0 and c.x.to_f64() <= RoadCamera.screen_width and c.y.to_f64() >= 0.0)
+			bird_clear =
+				match bird_drawing_top($model.scene) {
+					Top(bird_top) => bottom + 20.0 < bird_top
+					Unseen => Bool.True
+				}
+			$in_view = $in_view + 1
+			$first_in_view = $first_in_view.min(steps)
+			$last_in_view = $last_in_view.max(steps)
+			$fives =
+				if jets.len() == 5 {
+					$fives + 1
+				} else {
+					$fives
+				}
+			$touches =
+				if bird_clear and bottom < ridge_top and on_screen {
+					$touches
+				} else {
+					$touches + 1
+				}
+		} else {
+			{}
+		}
+		$model = model_at_next_step($model, Input.none)
+	}
+	$touches == 0 and $in_view == 64 and $fives == 64
+		and $first_in_view == 1276 and $last_in_view == 1339
+}
+
+# The jets are in the frame while they fly.
+expect {
+	jet_shapes = JetFlyBy.jets_at(1300).join_map(|jet| jet.shapes)
+	frame = LanternsApp.frame_shapes({ scene: scene_after(first_scene, 1300), play: Playing })
+	jet_shapes.len() == 25 and jet_shapes.all(|shape| frame.contains(shape))
+}
+
+## How high on the screen the top of the bird's drawing reaches in `scene`, the
+## highest its pose reaches, or `Unseen` when the bird is behind the camera.
+bird_drawing_top : LanternsApp.Scene -> [Top(F64), Unseen]
+bird_drawing_top = |{ flight, steps_into_leg, steps }| {
+	camera = camera_at(steps)
+	bird = flight.bird_instant_at(flight_stage(steps_into_leg))
+	gap = bird.location.along - camera.along()
+	bird_corners = Bird.pose_still(bird.pose).polygons().join_map(|polygon| polygon.points)
+	bird_rise = bird_corners.fold(0.0, |most, corner| most.max(corner.y))
+	bird_height = RoadCamera.size_on_screen({ height: Bird.height_metres, forward: gap }).to_f64()
+	match camera.project(bird.location) {
+		Ok(foot) => Top(foot.y.to_f64() - bird_height * bird_rise)
+		Err(BehindCamera) => Unseen
+	}
 }
 
 # The plane is in the frame while it is in view, and a skip from before it

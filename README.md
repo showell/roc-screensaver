@@ -20,17 +20,24 @@ app, in Roc, so they work the same on the page and in the Windows window.
 
 `screensavers/lanterns/` is the one screensaver so far, a sunrise made for
 Roc's 0.1.0 launch: the Roc bird hops from lamp to lamp down an endless road
-as the sun comes up, and a small plane tows a "Welcome to Roc!" banner across
-the sky. Space pauses, R restarts at dawn, and → skips ahead a crossing. Its
+as the sun comes up, a small plane tows a "Welcome to Roc!" banner across
+the sky, and five jets fly over before the cycle starts again. Space pauses, R restarts at dawn, and → skips ahead a crossing. Its
 own README describes the scene.
 
 - **On the web:** http://143.244.172.148:9210/lanterns/ (the dev channel).
 - **On Windows:** open the newest successful run of the
   [Windows screensaver workflow](https://github.com/showell/roc-screensaver/actions/workflows/windows.yml),
-  download its `windows-screensaver` artifact (you need to be signed in to
-  GitHub), and unzip it. Right-click `screensaver.scr` and choose **Install**
-  to make it your screensaver, or double-click `screensaver.exe` for a window
-  that takes the keys (Q or Esc quits).
+  and download its `windows-screensaver` artifact, a zip (you need to be
+  signed in to GitHub). Then:
+  1. Right-click the zip, choose **Extract All…**, then **Extract**.
+     Explorer shows a zip's contents as a preview, and nothing inside can be
+     run or installed from there.
+  2. Double-click `screensaver.exe` for a window that takes the keys (Q or
+     Esc quits). It is unsigned, so if Windows says "Windows protected your
+     PC", choose **More info**, then **Run anyway**.
+  3. Right-click `screensaver.scr`, choose **Show more options** (Windows
+     11's short menu hides it; Shift+right-click opens the full menu), then
+     **Install**, to make it your screensaver.
 
 ## Making a screensaver
 
