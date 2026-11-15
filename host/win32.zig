@@ -1,70 +1,39 @@
-//! win32 — the Windows live-window layer for the native Safari renderer.
+//! The Windows window and the .scr screensaver for the platform. Each frame comes from the Roc
+//! app through screensaver.zig, raster.zig fills it into pixels, and this file shows them in a
+//! Win32 window and pumps the message queue. x11.zig is its Linux sibling.
 //!
-//! This is the Windows sibling of native/x11.zig: the per-platform shim that owns a window
-//! and the event loop, nothing else. The reusable core is unchanged — raster.zig fills a
-//! pixel buffer from the shared wasm geometry (via safari.zig) — and this file just shows
-//! that buffer in a Win32 window and pumps the message queue. Only the blit differs: GDI's
-//! StretchDIBits of a top-down 32-bit DIB, where X11 used an XImage + XRender.
+//! raster.zig's pixel, 0x00RRGGBB in a u32, is exactly a 32-bit BI_RGB DIB's DWORD, so the
+//! buffer goes to GDI with no conversion. The DIB's height is negative so that row 0 is the top,
+//! as in the buffer.
 //!
-//! PIXEL FORMAT. raster fills 0x00RRGGBB per u32. A GDI 32-bit BI_RGB DIB is exactly that
-//! DWORD layout (bytes B,G,R,0 little-endian), so the buffer feeds StretchDIBits directly with
-//! no per-pixel conversion — the same free aliasing the X11 layer got from a TrueColor visual.
-//! biHeight is NEGATIVE so the DIB is top-down (row 0 = top), matching our buffer's order.
+//! GDI gets the supersampled render (the app's size times raster.SS) and scales it to the window
+//! with the HALFTONE stretch mode, which keeps the anti-aliasing at any window size. It scales
+//! into an off-screen bitmap and then copies that to the window in one BitBlt, because the
+//! compositor otherwise catches a half-written frame and shows it as tearing.
 //!
-//! ANTI-ALIASING. We hand GDI the SUPERSAMPLED render (1920×1200) rather than the box-
-//! downsampled 960×600, and let GDI resample it to the window with the HALFTONE stretch mode
-//! (bilinear-quality). At the 960 window that's a 2:1 downscale ≈ the manual box filter;
-//! expanded up to ~1080p it's near 1:1, so the snowcap keeps its AA.
+//! The frame is nearly all software raster, so it is split across threads. The main thread is
+//! the only one that calls Roc: it steps the app, takes its frame's draw words and background
+//! into a ring slot, and later shows finished slots in order at the app's frame rate. Two worker
+//! threads each claim a queued slot and rasterize it into that slot's pixels. A slot belongs to
+//! one thread at a time, so its atomic `state` is the only shared word: main publishes a slot as
+//! queued, a worker claims it with a compare-and-swap, and publishes it as ready when its pixels
+//! are done. Idle workers Sleep(1).
 //!
-//! PRESENTATION (double-buffered). We do NOT StretchDIBits straight onto the window: HALFTONE
-//! scaling is slow, and the compositor samples the window surface mid-write (top-to-bottom),
-//! catching a half-updated frame — horizontal tearing streaks. So we scale into an OFF-SCREEN
-//! memory DC (a screen-compatible bitmap the size of the client area), then present the finished
-//! frame with a single fast 1:1 BitBlt. The on-screen write is then one quick copy, too brief to
-//! be caught half-done. The memory bitmap is rebuilt only on resize.
+//! Windows starts a .scr with a flag that picks its mode, which parseMode reads:
+//!   /s          fullscreen: a borderless topmost popup over the primary monitor, the cursor
+//!               hidden, and any key, click, wheel or real mouse move quits.
+//!   /p <hwnd>   the preview inside the screen saver settings dialog, until that window closes.
+//!   /c[:<hwnd>] the settings: there are none, so a message box says so.
+//!   (no args)   a window at the app's size (Space pauses, Q or Esc quits), for development;
+//!               the settings panel never starts a .scr without a flag.
+//!   --headless=<N>  N frames with no window, then the last frame's checksum, for CI.
+//! Fullscreen stretches the app's frame to the monitor's shape.
 //!
-//! THREADING (the frame-parallel pipeline). Profiling showed the frame is ~97% software raster
-//! (raster.render, 15–29 ms) and ~3% geometry (renderFrame, 0.68 ms) — single-threaded that's
-//! ~31 ms/frame (~32 fps), the sluggishness. But raster.render is a PURE function of (fb, words,
-//! tilt, sky, sun), and the depth sort that fixes paint order lives entirely in the geometry
-//! step (render.zig). So we split the work: the MAIN thread runs the sequential geometry (it
-//! owns safari's globals — the one draw buffer + rider state) and snapshots each frame's draw-
-//! words into a ring slot; two WORKER threads each rasterize a snapshot into its own pixel
-//! buffer in parallel; the main thread blits finished frames IN ORDER at the 60 fps cadence.
-//! Measured ~6.5 ms/frame with 2 workers (clears 60 fps); the shared core + golden PNG harness
-//! are untouched.
+//! std.os.windows has no user32 or gdi32, so those calls are declared below, which is what lets
+//! `zig build -Dwindows` build this without a Windows SDK.
 //!
-//! It's LOCK-FREE: a slot is owned by exactly one thread in each phase, so the only shared word
-//! is its `state` enum. The atomic transitions carry the buffer handoff — main's draw-words
-//! writes are release-published by the store to .queued and a worker acquires them by the CAS
-//! that claims the slot (.queued→.rendering, so two workers never grab the same one); the
-//! worker's pixels are release-published by the store to .ready and main acquires them before
-//! the blit. Idle workers (ring full — the steady state, since they outrun the 60 fps display)
-//! just Sleep(1); that poll costs nothing against the frame budget.
-//!
-//! SCREENSAVER MODES (.scr). A Windows .scr is just this PE renamed — the OS launches it with a
-//! command-line flag that picks the mode, which we parse in parseMode():
-//!   /s            → FULLSCREEN: a borderless topmost WS_POPUP over the primary monitor, cursor
-//!                   hidden, and ANY input (key, real mouse move past a small threshold, click,
-//!                   wheel) quits — the screensaver contract.
-//!   /p <hwnd>     → PREVIEW: a WS_CHILD parented into the little monitor in the Screen-Saver
-//!                   settings dialog (hwnd is passed by the OS). Runs until that parent closes.
-//!   /c[:<hwnd>]   → CONFIG: we have no settings, so a MessageBox says so and exits.
-//!   (no args)     → WINDOWED: the 960×600 dev window (SPACE pause · Q/Esc quit). This is NOT the
-//!                   screensaver convention (no-args should mean config) but the OS never launches
-//!                   a .scr with no args through its UI (Test=/s, Configure=/c, double-click=install
-//!                   via the settings panel), so we keep no-args as the convenient dev-loop view.
-//! The scene is identical across modes — only the window kind + the client size GDI stretches into
-//! differ. Fullscreen still uses the design camera (no setViewW), so a 16:10 scene is stretched to
-//! the monitor's aspect; the true aspect-correct fit is the deferred adaptive-camera step.
-//!
-//! std.os.windows (zig 0.16) ships the base types + kernel32 but no user32/gdi32, so the
-//! GUI/GDI surface is declared inline below — the standard approach for a no-SDK cross build.
-//!
-//! Cross-compiled to x86_64-windows by ops/build_safari_windows (zig build -Dwin32), which also
-//! emits the byte-identical safari.scr (the extension is all Windows needs to treat it as a saver).
-//!
-//! This file is copied from angry-gopher's games/driving/native/, whose copy is the older Safari: here each frame comes from the Roc app through host/screensaver.zig, and `zig build -Dwindows` builds it.
+//! This file was copied from angry-gopher's games/driving/native/ on 2026-11-15; angry-gopher's
+//! copy draws the older zig Safari.
 
 const std = @import("std");
 const raster = @import("raster.zig");
