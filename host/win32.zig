@@ -1,6 +1,6 @@
 //! The Windows window and the .scr screensaver for the platform. Each frame comes from the Roc
 //! app through screensaver.zig, raster.zig fills it into pixels, and this file shows them in a
-//! Win32 window and pumps the message queue. x11.zig is its Linux sibling.
+//! Win32 window and pumps the message queue. There is no Linux window.
 //!
 //! raster.zig's pixel, 0x00RRGGBB in a u32, is exactly a 32-bit BI_RGB DIB's DWORD, so the
 //! buffer goes to GDI with no conversion. The DIB's height is negative so that row 0 is the top,
@@ -24,8 +24,12 @@
 //!               hidden, and any key, click, wheel or real mouse move quits.
 //!   /p <hwnd>   the preview inside the screen saver settings dialog, until that window closes.
 //!   /c[:<hwnd>] the settings: there are none, so a message box says so.
-//!   (no args)   a window at the app's size (Space pauses, Q or Esc quits), for development;
-//!               the settings panel never starts a .scr without a flag.
+//!   (no args)   a window at the app's size, for development and for playing with an app's
+//!               controls: every key but Q and Esc goes to the app's step (host/keyboard.zig),
+//!               and Q or Esc quits; the settings panel never starts a .scr without a flag.
+//! Only the window passes keys to the app. Fullscreen keeps the screensaver's contract, where a
+//! key ends it, the preview takes no input, and headless passes none, so its frames are the PNG
+//! harness's.
 //!   --headless=<N>  N frames with no window, then the last frame's checksum, for CI.
 //! Fullscreen stretches the app's frame to the monitor's shape.
 //!
@@ -36,6 +40,8 @@
 //! copy draws the older zig Safari.
 
 const std = @import("std");
+const abi = @import("abi.zig");
+const keyboard = @import("keyboard.zig");
 const raster = @import("raster.zig");
 const screensaver = @import("screensaver.zig");
 const w = std.os.windows;
@@ -120,17 +126,20 @@ const SM_CYSCREEN: c_int = 1;
 const MB_OK: UINT = 0;
 const PM_REMOVE: UINT = 0x0001;
 const WM_DESTROY: UINT = 0x0002;
+const WM_KILLFOCUS: UINT = 0x0008;
 const WM_CLOSE: UINT = 0x0010;
 const WM_KEYDOWN: UINT = 0x0100;
+const WM_KEYUP: UINT = 0x0101;
 const WM_SYSKEYDOWN: UINT = 0x0104; // Alt+key etc. — also quits in fullscreen
+const WM_SYSKEYUP: UINT = 0x0105;
 const WM_MOUSEMOVE: UINT = 0x0200;
 const WM_LBUTTONDOWN: UINT = 0x0201;
 const WM_RBUTTONDOWN: UINT = 0x0204;
 const WM_MBUTTONDOWN: UINT = 0x0207;
 const WM_MOUSEWHEEL: UINT = 0x020A;
 const WM_QUIT: UINT = 0x0012;
+const VK_CONTROL: c_int = 0x11;
 const VK_ESCAPE: WPARAM = 0x1B;
-const VK_SPACE: WPARAM = 0x20;
 const VK_Q: WPARAM = 0x51;
 const SRCCOPY: DWORD = 0x00CC0020;
 const DIB_RGB_COLORS: UINT = 0;
@@ -156,6 +165,7 @@ extern "user32" fn GetSystemMetrics(c_int) callconv(.winapi) c_int;
 extern "user32" fn ShowCursor(BOOL) callconv(.winapi) c_int;
 extern "user32" fn IsWindow(?HWND) callconv(.winapi) BOOL;
 extern "user32" fn MessageBoxW(?HWND, [*:0]const WCHAR, [*:0]const WCHAR, UINT) callconv(.winapi) c_int;
+extern "user32" fn GetKeyState(c_int) callconv(.winapi) c_short;
 extern "kernel32" fn GetModuleHandleW(?[*:0]const WCHAR) callconv(.winapi) ?HINSTANCE;
 extern "kernel32" fn GetCommandLineW() callconv(.winapi) [*:0]const u16;
 extern "kernel32" fn Sleep(DWORD) callconv(.winapi) void;
@@ -210,7 +220,10 @@ const Slot = struct {
 var slots: [RING]Slot = @splat(.{});
 var g_quit = std.atomic.Value(bool).init(false); // tells the workers to exit
 var g_running: bool = true; // main loop (main thread only; set by the WndProc)
-var g_auto: bool = true; // SPACE pause: main stops producing + displaying (freeze)
+// The windowed mode's keys between two steps (main thread only: the WndProc runs on it, inside
+// DispatchMessageW). produce() takes them at each step, so a key reaches the frame produced next,
+// which shows a few frames later, as many as the ring holds ahead.
+var g_keyboard: keyboard.Keyboard = .{};
 
 // which .scr mode we're in — set once by parseMode() before the window is created (main thread only).
 // `headless` is no .scr mode: `--headless=<N>` draws N frames through the pipeline with no window
@@ -285,14 +298,31 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
         WM_KEYDOWN, WM_SYSKEYDOWN => {
             switch (g_mode) {
                 .fullscreen => _ = DestroyWindow(hwnd), // any key ends the screensaver
-                .windowed => switch (wParam) {
-                    VK_SPACE => g_auto = !g_auto,
-                    VK_ESCAPE, VK_Q => _ = DestroyWindow(hwnd),
-                    else => {},
+                .windowed => {
+                    // Alt and Ctrl make a shortcut, the window's (Alt+F4) and not the app's, as
+                    // the page leaves its shortcuts to the browser.
+                    if (msg == WM_SYSKEYDOWN) return DefWindowProcW(hwnd, msg, wParam, lParam);
+                    switch (wParam) {
+                        VK_ESCAPE, VK_Q => _ = DestroyWindow(hwnd),
+                        else => if (GetKeyState(VK_CONTROL) >= 0) {
+                            // Bit 30 of lParam says the key was already down: an autorepeat.
+                            const repeat = (@as(usize, @bitCast(lParam)) >> 30) & 1 == 1;
+                            g_keyboard.press(keyboard.bitOfVirtualKey(wParam), repeat);
+                        },
+                    }
                 },
                 .preview, .config, .headless => {}, // preview ignores input; config and headless have no window
             }
             return 0;
+        },
+        WM_KEYUP, WM_SYSKEYUP => {
+            // A key let go is let go whatever was held with it, so none sticks down.
+            if (g_mode == .windowed) g_keyboard.release(keyboard.bitOfVirtualKey(wParam));
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_KILLFOCUS => {
+            g_keyboard.clear();
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEWHEEL => {
             if (g_mode == .fullscreen) {
@@ -552,10 +582,8 @@ fn run(hwnd: HWND) !void {
             if (g_preview_parent) |p| if (!IsWindow(p).toBool()) break;
         }
 
-        if (g_auto) {
-            displayNext(hdc, hwnd, &display_seq);
-            produce(&produce_seq, std.math.maxInt(usize)); // refill the ring after freeing a slot
-        }
+        displayNext(hdc, hwnd, &display_seq);
+        produce(&produce_seq, std.math.maxInt(usize)); // refill the ring after freeing a slot
 
         // pace to the display budget: sleep only the time LEFT after the tick's work.
         var now: i64 = 0;
@@ -590,7 +618,9 @@ fn produce(produce_seq: *usize, limit: usize) void {
         s.top = d.sky_top;
         s.horizon = d.sky_horizon;
         s.sun = d.sun;
-        g_saver.advance();
+        // Only the window passes keys, and the first step it produces in a tick spends the
+        // struck ones; every other mode steps with none.
+        g_saver.advance(if (g_mode == .windowed) g_keyboard.take() else abi.Keys.none);
 
         s.state.store(.queued, .release); // publish: a worker's claim CAS acquires the writes above
         produce_seq.* += 1;

@@ -16,8 +16,12 @@ platform ""
 
 			## The number is that of the frame the next model is drawn as, so
 			## the app knows the time (that number over `fps`, in seconds)
-			## without keeping a clock of its own.
-			step : Box(model), U64 -> Box(model),
+			## without keeping a clock of its own. The keys are the keyboard
+			## at this step as two bit sets in lib/Keys.roc's bits: `held`,
+			## the keys down now, and `struck`, those that went down since the
+			## last step. They are plain numbers, as the page's are, so a host
+			## fills them from its own key events with no Roc value to build.
+			step : Box(model), U64, { held : U32, struck : U32 } -> Box(model),
 			frame : Box(model) -> Frame,
 			size : { width : U32, height : U32 },
 			fps : U32,

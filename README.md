@@ -106,6 +106,19 @@ The platform: on Linux an app builds, its frames are painted headlessly as
 PNGs, the host's view of the frame is held to `roc glue`'s, and every
 allocation Roc makes is shown freed. There is no Linux window.
 
+The step takes the keyboard: the keys held and the keys struck since the
+last step, two bit sets in `lib/Keys.roc`'s bits, as the page's runner
+passes them. `NativeApp` makes them an `Input.Snapshot` for the app's
+`model_at_next_step`, so an app reads the same keys natively as on the page;
+the pointer is `Mouse.none` natively, since no host passes one yet. Only the
+Windows dev window passes keys: every key the app has a name for but Q,
+which with Esc closes the window and never reaches the app. `/s` keeps the
+screensaver's contract (any key ends it), `/p` takes no input, and the
+headless run and the PNG harness pass none, so their frames don't move.
+The keys example (`examples/keys/`) counts its keys, and `zig build test`
+shows a key struck in the host reach its step; nobody has yet pressed one in
+the real window.
+
 On Windows the lanterns build as a screensaver (`.exe` and `.scr`), on
 GitHub Actions and, it seems, from this Linux box too: the x64win archive
 links with zig's mingw target and no SDK. CI runs it headless; nobody has
@@ -126,7 +139,7 @@ to move as a real app uses it.
     zig build                   # the lanterns' archive (roc build, dev backend), then the harness
     zig build png -- out/x      # its first 8 frames, out/x/frame-000.png ...
     zig build png -- out/x 48   # the frame after 48 steps, out/x/step-048.png
-    zig build test              # the seam against roc glue; the basic example's frames painted and freed
+    zig build test              # the seam against roc glue; the basic example's frames painted and freed; the keys example's keys
     shale tools/web_build.shale # the lanterns page, into the dev channel (opt=dev: the dev backend)
     zig build -Dwindows         # zig-out/bin/screensaver.exe and screensaver.scr (x86_64-windows)
     zig build -Dwindows headless  # on Windows: the .exe with no window, the last frame's checksum
@@ -138,12 +151,13 @@ to move as a real app uses it.
 The Windows build runs on GitHub Actions by hand: `gh workflow run
 windows.yml`, then `gh run download <run-id> -n windows-screensaver`.
 To install it, right-click `screensaver.scr` and choose Install; run with
-no arguments, it is a dev window (Space pauses, Q or Esc quits).
+no arguments, it is a dev window whose keys go to the app (Q or Esc quits).
 
 ## Layout
 
 - `platform/main.roc`: the platform. What it requires of an app
-  (`init`, `step`, `frame`, `size`, `fps`, over a boxed model) and the
+  (`init`, `step`, `frame`, `size`, `fps`, over a boxed model; `step` takes
+  the frame number and the keys, `{ held : U32, struck : U32 }`) and the
   entries it provides the host (`roc_init`, `roc_step`, `roc_frame`,
   `roc_release_frame`, `roc_release_model`, `roc_width`, `roc_height`,
   `roc_fps`).
@@ -155,10 +169,13 @@ no arguments, it is a dev window (Space pauses, Q or Esc quits).
 - `host/words.zig`: a frame's shapes written as the rasterizer's
   draw-command words.
 - `host/screensaver.zig`: the model held and stepped, each frame painted.
+- `host/keyboard.zig`: the keys a window keeps between two steps, and the
+  Win32 virtual keys in `lib/Keys.roc`'s bits; `host/keys_test.zig` runs the
+  keys example through it.
 - `host/png_main.zig`: the headless harness behind `zig build png`.
 - `host/win32.zig`: the Windows screensaver: its `.scr` modes (`/s`
   fullscreen, `/p <hwnd>` preview, `/c` config, no arguments a dev
-  window), and `--headless=<N>` for CI. The main thread alone calls Roc,
+  window, the one mode that passes keys), and `--headless=<N>` for CI. The main thread alone calls Roc,
   taking each frame's words; two workers rasterize them. Copied from
   angry-gopher's `games/driving/native/`, whose top comment it keeps.
 - `.github/workflows/windows.yml`: the Windows build on a hosted runner,
@@ -178,6 +195,8 @@ no arguments, it is a dev window (Space pauses, Q or Esc quits).
   camera are adapted from Safari's.
 - `examples/basic/`: a small app that uses every kind of shape and fill
   directly, the host tests' fixture.
+- `examples/keys/`: a canvas app on `NativeApp` whose frame counts the keys
+  its step was given, the keys test's fixture.
 - `tools/`: the gate, the glue regenerator, the page's build and
   `web_shots.mjs`, which shoots the page in headless Chromium.
 

@@ -207,6 +207,16 @@ test "the frame's layout: a shape is 80 bytes with its tag at 72, a fill 44 with
     try std.testing.expectEqual(16, @sizeOf(abi.Sun));
 }
 
+test "the step's keys are held then struck, and the two swapped fail the check" {
+    try std.testing.expectEqual(0, @offsetOf(abi.Keys, "held"));
+    try std.testing.expectEqual(4, @offsetOf(abi.Keys, "struck"));
+    try std.testing.expect(comptime fnMismatch("roc_step") == null);
+    const Swapped = extern struct { struck: u32, held: u32 };
+    const m = comptime mismatch(Swapped, glue.Step_for_hostArg2, "roc_step argument 2").?;
+    try std.testing.expect(contains(m, "roc_step argument 2.held: at byte 4 of "));
+    try std.testing.expect(contains(m, "at byte 0 in roc glue"));
+}
+
 test "a swap, a renumbered tag and a missing member each fail the check, named" {
     // A linear gradient's two stops exchanged: the same size, the wrong offsets.
     const Swapped = extern struct { start: abi.Stop, from: abi.Point, end: abi.Stop, to: abi.Point };

@@ -47,10 +47,12 @@ pub const Screensaver = struct {
         s.gpa.free(s.display);
     }
 
-    /// The model of the next frame.
-    pub fn advance(s: *Screensaver) void {
+    /// The model of the next frame, stepped with the keyboard as it is now.
+    /// A host that passes no keys (the PNG harness, headless, the
+    /// screensaver's own modes) passes `abi.Keys.none`.
+    pub fn advance(s: *Screensaver, keys: abi.Keys) void {
         s.frame_number += 1;
-        s.model = abi.roc_step(s.model, s.frame_number);
+        s.model = abi.roc_step(s.model, s.frame_number, keys);
     }
 
     /// The current model's frame as `raster.render` takes it. Its words are

@@ -82,7 +82,7 @@ test "frames move, and every allocation Roc made is freed" {
     const first = try std.testing.allocator.dupe(u32, s.display);
     defer std.testing.allocator.free(first);
     for (0..4) |_| {
-        s.advance();
+        s.advance(.none);
         try s.paint();
     }
     try std.testing.expectEqual(4, s.frame_number);

@@ -86,12 +86,22 @@ pub const Shape = extern struct {
 
 pub const Frame = extern struct { shapes: List(Shape), background: Background };
 
+/// The keyboard at one step, as two bit sets in lib/Keys.roc's bits: the
+/// keys down now, and those that went down since the last step.
+pub const Keys = extern struct {
+    held: u32,
+    struck: u32,
+
+    /// No key touched: what a host with no keyboard passes every step.
+    pub const none: Keys = .{ .held = 0, .struck = 0 };
+};
+
 /// The app's model, boxed: a pointer to the value, its refcount the word
 /// before it.
 pub const Model = ?*anyopaque;
 
 pub extern fn roc_init() callconv(.c) Model;
-pub extern fn roc_step(model: Model, frame_number: u64) callconv(.c) Model;
+pub extern fn roc_step(model: Model, frame_number: u64, keys: Keys) callconv(.c) Model;
 pub extern fn roc_frame(model: Model) callconv(.c) Frame;
 pub extern fn roc_release_frame(frame: Frame) callconv(.c) void;
 pub extern fn roc_release_model(model: Model) callconv(.c) void;

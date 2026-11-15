@@ -8,12 +8,13 @@ const std = @import("std");
 ///                                the headless harness: the first frames as
 ///                                PNGs, or the frames at the steps named
 ///   zig build test               the host's tests: the seam against roc glue,
-///                                and the basic example's frames painted and
-///                                freed
+///                                the basic example's frames painted and
+///                                freed, and the keys example's keys
 ///
 /// `-Dapp=<path>` names another app; the lanterns screensaver is the default.
-/// The tests always link the basic example (examples/basic/), whose every
-/// shape and word they know by heart.
+/// The tests link the basic example (examples/basic/), whose every shape and
+/// word they know by heart, and the keys example (examples/keys/), which
+/// counts the keys its step is given.
 ///
 /// `-Dwindows` builds the Windows screensaver instead (host/win32.zig, on
 /// Roc's x64win archive), from any host:
@@ -44,7 +45,7 @@ pub fn build(b: *std.Build) void {
     png.stdio = .inherit;
     b.step("png", "The headless harness: -- <out dir> [step ...], the app's frames as PNGs").dependOn(&png.step);
 
-    const tests = b.step("test", "The host's tests: the seam against roc glue, and the basic example's frames painted and freed");
+    const tests = b.step("test", "The host's tests: the seam against roc glue, the basic example's frames painted and freed, and the keys example's keys");
     const basic = rocArchive(b, roc, "examples/basic/main.roc", "x64musl", "basic-x64musl.a");
     const abi_test = b.createModule(.{ .root_source_file = b.path("host/abi_test.zig"), .target = target, .optimize = optimize });
     abi_test.addObjectFile(basic);
@@ -52,6 +53,12 @@ pub fn build(b: *std.Build) void {
     const app_test = b.createModule(.{ .root_source_file = b.path("host/screensaver_test.zig"), .target = target, .optimize = optimize });
     app_test.addObjectFile(basic);
     tests.dependOn(&testRun(b, app_test).step);
+    // The keys example is a canvas app on native/, so its own archive and
+    // test root: two archives in one test would define each entry twice.
+    const keys = rocArchive(b, roc, "examples/keys/main.roc", "x64musl", "keys-x64musl.a");
+    const keys_test = b.createModule(.{ .root_source_file = b.path("host/keys_test.zig"), .target = target, .optimize = optimize });
+    keys_test.addObjectFile(keys);
+    tests.dependOn(&testRun(b, keys_test).step);
 }
 
 /// The app on platform/, built by the pinned Roc for one of the platform's

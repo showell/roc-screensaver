@@ -18,7 +18,7 @@ fps = 30
 
 program = {
 	init: |{}| Box.box({ seconds: 0.0 }),
-	step: |_model, frame_number| Box.box({ seconds: frame_number.to_f32() / fps.to_f32() }),
+	step: |_model, frame_number, _keys| Box.box({ seconds: frame_number.to_f32() / fps.to_f32() }),
 	frame: |model| frame_at(Box.unbox(model).seconds),
 	size: { width: 480, height: 300 },
 	fps,

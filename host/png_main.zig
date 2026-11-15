@@ -42,7 +42,7 @@ pub fn main(init: std.process.Init) !void {
     const out = try a.alloc(u8, zlib.len + 1024);
 
     for (steps.items) |step| {
-        while (s.frame_number < step) s.advance();
+        while (s.frame_number < step) s.advance(.none);
         try s.paint();
         const bytes = png.encode(s.display, s.width, s.height, raw, zlib, out);
         const name = if (named) "step" else "frame";
