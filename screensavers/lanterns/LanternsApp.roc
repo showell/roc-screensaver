@@ -5,10 +5,16 @@
 ## mountains, the sun peeks over them after three of the bird's crossings and
 ## climbs on, and the scene brightens all the way to the cycle's end, thirteen
 ## crossings and a perch later, when it starts again from its first frame, so
-## the cycle repeats exactly. It needs no input.
+## the cycle repeats exactly.
 ##
-## The model is one flight, how many steps into it the screensaver is, and how
-## many steps into the cycle, so it stays the same size however long it plays.
+## A viewer may steer it with three keys, read from each step's input, so the
+## page and a native window behave alike: Space pauses and resumes, R starts
+## again at dawn, and the right arrow skips ahead one crossing. With no key
+## struck it plays on by itself, as a screensaver must.
+##
+## The model is the scene and whether it is playing. The scene is one flight,
+## how many steps into it the screensaver is, and how many steps into the
+## cycle, so it stays the same size however long it plays.
 ## Each leg of the bird's journey is a perch, then a flight; when a leg
 ## ends, the next flight starts from the lamp the bird landed on. The camera
 ## moves down the road at one constant speed, the bird's own pace over a leg,
@@ -31,7 +37,13 @@ import lib.RgbColor
 import lib.Shapes
 
 LanternsApp :: [].{
-	Model : { flight : BirdFlight, steps_into_leg : U64, steps : U64 }
+	Model : { scene : LanternsApp.Scene, play : LanternsApp.Play }
+
+	## Where the cycle has got to: everything a frame is drawn from.
+	Scene : { flight : BirdFlight, steps_into_leg : U64, steps : U64 }
+
+	## Whether the scene moves on at each step, or holds still for the viewer.
+	Play : [Playing, Paused]
 
 	canvas_app : CanvasApp.CanvasApp(LanternsApp.Model)
 	canvas_app = {
@@ -48,7 +60,8 @@ LanternsApp :: [].{
 	}
 
 	frame_shapes : LanternsApp.Model -> List(Shapes.Shape)
-	frame_shapes = |{ flight, steps_into_leg, steps }| {
+	frame_shapes = |model| {
+		{ flight, steps_into_leg, steps } = model.scene
 		camera = camera_at(steps)
 		day = day_at(steps)
 		light = Sunrise.light_at(day)
@@ -98,9 +111,14 @@ closing_perch_steps = perch_steps
 cycle_steps : U64
 cycle_steps = rising_crossings * leg_steps + closing_perch_steps
 
-## The model the screensaver starts from, and starts again from each cycle.
+## The scene the cycle starts from, and starts again from each time round.
+first_scene : LanternsApp.Scene
+first_scene = { flight: BirdFlight.first, steps_into_leg: 0, steps: 0 }
+
+## The model the screensaver starts from, playing, and the one R goes back to,
+## so a restart plays at once even from a pause, as a viewer expects.
 first_model : LanternsApp.Model
-first_model = { flight: BirdFlight.first, steps_into_leg: 0, steps: 0 }
+first_model = { scene: first_scene, play: Playing }
 
 ## How far into the day it is `steps` into the cycle: 0 at dawn as the cycle
 ## starts, then a little more at every step to the last, so the scene never
@@ -125,17 +143,59 @@ follow_distance = 34.0
 view_depth : F64
 view_depth = 400.0
 
+## The model after one step, given the keys. Each control reads a key struck
+## at this step, never one held, so a held Space toggles once and a held right
+## arrow skips once. R is read first, then Space, then the right arrow, so a
+## step that strikes several does one thing. A step that skips or toggles
+## does not also play a step.
 model_at_next_step : LanternsApp.Model, Input.Snapshot -> LanternsApp.Model
-model_at_next_step = |model, _input| {
-	steps_into_leg = model.steps_into_leg + 1
-	steps = model.steps + 1
-	if steps >= cycle_steps {
+model_at_next_step = |model, input|
+	if input.key_pressed(KeyR) {
 		first_model
-	} else if steps_into_leg >= leg_steps {
-		{ flight: model.flight.next(), steps_into_leg: 0, steps }
+	} else if input.key_pressed(KeySpace) {
+		{ ..model, play: toggled(model.play) }
+	} else if input.key_pressed(KeyRight) {
+		# The skip plays a leg's steps, so the sun, the light and the bird all
+		# move on together and the skip wraps where the cycle does. A paused
+		# scene skips and stays paused.
+		{ ..model, scene: scene_after(model.scene, leg_steps) }
 	} else {
-		{ ..model, steps_into_leg, steps }
+		match model.play {
+			Playing => { ..model, scene: scene_at_next_step(model.scene) }
+			Paused => model
+		}
 	}
+
+toggled : LanternsApp.Play -> LanternsApp.Play
+toggled = |play|
+	match play {
+		Playing => Paused
+		Paused => Playing
+	}
+
+## The scene one step on: a step into the leg, the next leg from the lamp the
+## bird landed on, or the cycle's first scene again after its last step.
+scene_at_next_step : LanternsApp.Scene -> LanternsApp.Scene
+scene_at_next_step = |scene| {
+	steps_into_leg = scene.steps_into_leg + 1
+	steps = scene.steps + 1
+	if steps >= cycle_steps {
+		first_scene
+	} else if steps_into_leg >= leg_steps {
+		{ flight: scene.flight.next(), steps_into_leg: 0, steps }
+	} else {
+		{ ..scene, steps_into_leg, steps }
+	}
+}
+
+## The scene `count` steps on, played one at a time.
+scene_after : LanternsApp.Scene, U64 -> LanternsApp.Scene
+scene_after = |scene, count| {
+	var $scene = scene
+	for _k in 0..<count {
+		$scene = scene_at_next_step($scene)
+	}
+	$scene
 }
 
 ## Where the flight has got to `steps_into_leg` steps into its leg.
@@ -377,7 +437,7 @@ expect flight_stage(perch_steps) == Playing(0)
 expect flight_stage(leg_steps - 1) == Playing(BirdFlight.frame_count - 1)
 expect {
 	last_of_leg = { flight: BirdFlight.first, steps_into_leg: leg_steps - 1, steps: 99 }
-	after = model_at_next_step(last_of_leg, Input.none)
+	after = scene_at_next_step(last_of_leg)
 	after.steps_into_leg == 0 and after.flight == BirdFlight.first.next() and after.steps == 100
 }
 
@@ -390,7 +450,7 @@ expect {
 	var $farthest = 0.0
 	var $off_screen = 0
 	for _step in 0..<cycle_steps {
-		{ flight, steps_into_leg, steps } = $model
+		{ flight, steps_into_leg, steps } = $model.scene
 		camera = camera_at(steps)
 		bird = flight.bird_instant_at(flight_stage(steps_into_leg))
 		gap = bird.location.along - camera.along()
@@ -420,12 +480,93 @@ expect camera_at(0).along() == RoadLamps.even_along(0) - follow_distance
 expect cycle_steps == 13 * 66 + 30
 expect {
 	last = { flight: BirdFlight.first, steps_into_leg: 29, steps: cycle_steps - 1 }
-	model_at_next_step(last, Input.none) == first_model
+	scene_at_next_step(last) == first_scene
 }
 expect {
 	before_last = { flight: BirdFlight.first, steps_into_leg: 28, steps: cycle_steps - 2 }
-	after = model_at_next_step(before_last, Input.none)
+	after = scene_at_next_step(before_last)
 	after.steps == cycle_steps - 1 and after.steps_into_leg == 29
+}
+
+# The controls. `mid` is a hundred steps in, partway through the second leg,
+# and playing.
+mid_model : LanternsApp.Model
+mid_model = { scene: scene_after(first_scene, 100), play: Playing }
+
+space : Input.Snapshot
+space = Input.none.with_key_pressed(KeySpace)
+
+# With no key struck the scene plays one step on, as it did before there were
+# controls, and a held key that was not struck at this step changes nothing;
+# a key the lanterns do not read is no key at all.
+expect {
+	stepped = { ..mid_model, scene: scene_at_next_step(mid_model.scene) }
+	model_at_next_step(mid_model, Input.none) == stepped
+		and stepped != mid_model
+		and model_at_next_step(mid_model, Input.none.with_key_down(KeySpace)) == stepped
+		and model_at_next_step(mid_model, Input.none.with_key_down(KeyR)) == stepped
+		and model_at_next_step(mid_model, Input.none.with_key_down(KeyRight)) == stepped
+		and model_at_next_step(mid_model, Input.none.with_key_pressed(KeyLeft)) == stepped
+}
+
+# Space pauses, holding the scene where it was, and a second Space resumes from
+# exactly the model it paused, which then plays on.
+expect {
+	paused = model_at_next_step(mid_model, space)
+	resumed = model_at_next_step(paused, space)
+	paused.play == Paused
+		and paused.scene == mid_model.scene
+		and resumed == mid_model
+		and model_at_next_step(resumed, Input.none).scene == scene_at_next_step(mid_model.scene)
+}
+
+# A paused step leaves the model as it was, for no key or a held Space.
+expect {
+	paused = { ..mid_model, play: Paused }
+	model_at_next_step(paused, Input.none) == paused
+		and model_at_next_step(paused, Input.none.with_key_down(KeySpace)) == paused
+		and model_at_next_step(model_at_next_step(paused, Input.none), Input.none) == paused
+}
+
+# R goes back to the first model from mid-cycle, playing or paused, so a
+# restart from a pause plays, and R at dawn stays at dawn; a held R does not
+# restart again.
+expect {
+	r = Input.none.with_key_pressed(KeyR)
+	model_at_next_step(mid_model, r) == first_model
+		and model_at_next_step({ ..mid_model, play: Paused }, r) == first_model
+		and model_at_next_step(first_model, r) == first_model
+		and first_model.play == Playing
+		and model_at_next_step(mid_model, Input.none.with_key_down(KeyR)) != first_model
+}
+
+# The right arrow moves the scene exactly one leg on, the bird one lamp
+# further at the same point of its leg, playing or paused, and keeps the pause.
+expect {
+	right = Input.none.with_key_pressed(KeyRight)
+	skipped = model_at_next_step(mid_model, right)
+	paused_skip = model_at_next_step({ ..mid_model, play: Paused }, right)
+	skipped.play == Playing
+		and skipped.scene.steps == 166
+		and skipped.scene.steps_into_leg == mid_model.scene.steps_into_leg
+		and skipped.scene.flight == mid_model.scene.flight.next()
+		and paused_skip.play == Paused
+		and paused_skip.scene == skipped.scene
+}
+
+# A skip that passes the cycle's end wraps as the cycle does: from ten steps
+# before the end it lands 56 steps into the first leg; from a leg before the
+# end it lands on the first scene itself; from just over a leg before, a step
+# short of it.
+expect {
+	right = Input.none.with_key_pressed(KeyRight)
+	skip_from = |steps| model_at_next_step({ scene: scene_after(first_scene, steps), play: Playing }, right).scene
+	near_end = skip_from(cycle_steps - 10)
+	near_end.steps == 56
+		and near_end.steps_into_leg == 56
+		and near_end.flight == BirdFlight.first
+		and skip_from(cycle_steps - leg_steps) == first_scene
+		and skip_from(cycle_steps - leg_steps - 1).steps == cycle_steps - 1
 }
 
 # The day runs from 0 at dawn and grows at every step, up to the last.
@@ -434,4 +575,4 @@ expect day_at(cycle_steps / 2) == Fraction.of(0.5)
 expect day_at(cycle_steps - 2) < day_at(cycle_steps - 1) and day_at(cycle_steps - 1) != Fraction.whole
 
 # A frame draws the backdrop, the lamps, their pools and the bird.
-expect LanternsApp.frame_shapes({ flight: BirdFlight.first, steps_into_leg: 40, steps: 40 }).len() > 50
+expect LanternsApp.frame_shapes({ scene: { flight: BirdFlight.first, steps_into_leg: 40, steps: 40 }, play: Playing }).len() > 50

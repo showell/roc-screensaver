@@ -30,6 +30,22 @@ The grass is a fresh green throughout, dusky enough at dawn for the pools to
 show on it. Then the whole model starts again from its first frame, road,
 bird, camera and sun, so every cycle is the same.
 
+A viewer can steer it with three keys, which the app reads from its step's
+`Input.Snapshot`, so they work the same on the page and in the Windows dev
+window. Each acts on the step a key is struck, never while it is held:
+
+- **Space** pauses, holding the bird, the camera and the sun still, and a
+  second Space resumes from the same moment.
+- **R** starts again at dawn, from the first frame, as the cycle's own rewind
+  does, and plays: a restart from a pause plays too.
+- **→** skips ahead one crossing, a leg of 66 steps played at once, so the
+  sun, the light and the bird all move on together; past the cycle's end it
+  wraps as the cycle does. Holding it skips once, and a paused scene skips and
+  stays paused.
+
+With no key struck it plays on by itself. The real screensaver (`/s`) ends
+on any key, so it never sees them.
+
 One app value, `LanternsApp.canvas_app` (a lib `CanvasApp`), runs both ways:
 
 - as a live page, through `web.roc` and lib's `WasmApp`, stepped thirty
