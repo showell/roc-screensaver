@@ -1,43 +1,66 @@
 # roc-screensaver
 
-Write a screensaver in Roc, and get both a Windows screensaver (`.scr`) and a
-web page from the same app.
+A Roc platform, written in Zig, that turns one Roc app into both a Windows
+screensaver (`.scr`) and a web page.
 
-An app is one Roc value, a `CanvasApp`: a model, a step from one model to
-the next, and the shapes each model looks like. Two platforms run it:
+Even if you don't intend to build a screensaver, this repo may be instructive
+for Roc newcomers. It shows how to write a Roc app that runs on more than one
+platform, and its `lib/` has helpers (shapes, brushes, colors, lettering,
+keyboard input) for building things like game engines.
 
-- **native:** a Zig host that steps the model, reads each frame out of Roc's
-  memory and paints it with a software rasterizer (`host/raster.zig`, from
-  angry-gopher). On Windows that is a real screensaver; on Linux it writes
-  PNGs.
-- **web:** a wasm platform and a small JavaScript runner that paint the same
-  shapes on a canvas.
+## What it gives you
 
-Only the platform changes between the two. Keyboard controls belong to the
-app, in Roc, so they work the same on the page and in the Windows window.
+- **A native platform in Zig, the heart of the repo.** The host steps your
+  app's model, reads each frame out of Roc's memory, and paints it with its
+  own software rasterizer (`host/raster.zig`). It needs no GPU and no
+  graphics library. On Windows that is a real screensaver, fast enough for
+  30 frames a second on one thread (see Status). On Linux it writes PNGs.
+- **A web preview of the same app.** A wasm platform and a small JavaScript
+  runner paint the same shapes on a canvas, so you see each change in a
+  browser in seconds, long before a Windows machine is involved. The gate
+  holds the two to the same picture: the page's first frame must match the
+  native harness's at the same step.
 
-## Lanterns
+An app is one Roc value, a `CanvasApp`: a model, a step from one model to the
+next, and the shapes each model looks like. Only the platform changes between
+the two. Keyboard controls belong to the app, in Roc, so they work the same on
+the page and in the Windows window.
 
-`screensavers/lanterns/` is the one screensaver so far, a sunrise made for
-Roc's 0.1.0 launch: the Roc bird hops from lamp to lamp down an endless road
-as the sun comes up, a small plane tows a "Welcome to Roc!" banner across
-the sky, and five jets fly over before the cycle starts again. Space pauses, R restarts at dawn, and → skips ahead a crossing. Its
-own README describes the scene.
+## The screensavers
 
-- **On the web:** http://143.244.172.148:9210/lanterns/ (the dev channel).
-- **On Windows:** open the newest successful run of the
-  [Windows screensaver workflow](https://github.com/showell/roc-screensaver/actions/workflows/windows.yml),
-  and download its `windows-screensaver` artifact, a zip (you need to be
-  signed in to GitHub). Then:
-  1. Right-click the zip, choose **Extract All…**, then **Extract**.
-     Explorer shows a zip's contents as a preview, and nothing inside can be
-     run or installed from there.
-  2. Double-click `lanterns.exe` for a window that takes the keys (Q or
-     Esc quits). It is unsigned, so if Windows says "Windows protected your
-     PC", choose **More info**, then **Run anyway**.
-  3. Right-click `lanterns.scr`, choose **Show more options** (Windows
-     11's short menu hides it; Shift+right-click opens the full menu), then
-     **Install**, to make it your screensaver.
+Each one has its own folder in `screensavers/` and its own README.
+
+- **Lanterns** (`screensavers/lanterns/`): a sunrise made for Roc's 0.1.0
+  launch. The Roc bird hops from lamp to lamp down an endless road as the sun
+  comes up, a small plane tows a "Welcome to Roc!" banner across the sky,
+  and five jets fly over before the cycle starts again. Space pauses, R
+  restarts at dawn, and → skips ahead a crossing.
+  On the web: https://roc.lynrummy.com/welcome-to-roc/
+- **Tides** (`screensavers/tides/`): six bands of water roll under a sky
+  that goes from dawn to day, dusk and night every two minutes. Space
+  pauses and R restarts at dawn.
+  On the web: https://roc.lynrummy.com/tides/
+- **Bubbles** (`screensavers/bubbles/`): translucent purple bubbles rise,
+  wobble, and fade or pop near the top. Space pauses and R restarts.
+  On the web: https://roc.lynrummy.com/bubbles/
+
+Tides and Bubbles are each one or two small modules, and a good place to start
+reading.
+
+**On Windows:** open the newest successful run of the
+[Windows screensaver workflow](https://github.com/showell/roc-screensaver/actions/workflows/windows.yml),
+and download its `windows-screensaver` artifact, a zip (you need to be
+signed in to GitHub). It holds an `.exe` and a `.scr` for each screensaver.
+Then:
+1. Right-click the zip, choose **Extract All…**, then **Extract**.
+   Explorer shows a zip's contents as a preview, and nothing inside can be
+   run or installed from there.
+2. Double-click `lanterns.exe` for a window that takes the keys (Q or
+   Esc quits). It is unsigned, so if Windows says "Windows protected your
+   PC", choose **More info**, then **Run anyway**.
+3. Right-click `lanterns.scr`, choose **Show more options** (Windows
+   11's short menu hides it; Shift+right-click opens the full menu), then
+   **Install**, to make it your screensaver.
 
 ## Making a screensaver
 
@@ -60,7 +83,7 @@ A screensaver is a folder in `screensavers/` with two roots over one app:
 
 The app itself uses `lib/`: `Shapes` and `Brush` to draw, `Font` for
 lettering the native painter can draw, `Input` and `Keys` for the keyboard,
-and `CanvasApp` to put it together. Copy lanterns' `main.roc`, `web.roc` and
+and `CanvasApp` to put it together. Copy tides' `main.roc`, `web.roc` and
 `page.html` to start. `zig build -Dapp=<folder>/main.roc` builds another app
 in place of lanterns.
 
