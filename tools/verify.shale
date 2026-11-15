@@ -4,11 +4,12 @@
 -- budget: steps=20000000
 --   roc fmt --check over platform/, native/, examples/ and screensavers/
 --   roc check of each root, held to zero errors and zero warnings by the
---     report's marks, since a warning alone still exits 2: the basic example,
---     and the lanterns screensaver both ways, natively (main.roc) and as a
---     page (web.roc)
+--     report's marks, since a warning alone still exits 2: the basic and keys
+--     examples, and the lanterns screensaver both ways, natively (main.roc)
+--     and as a page (web.roc)
 --   roc test of the lanterns screensaver, held to exactly `roc_tests_expected`
---     expects, the adapter's (native/FrameOfShapes.roc) and lib's among them
+--     expects, native/'s (the adapter's and NativeApp's keys) and lib's among
+--     them
 --   zig fmt --check over build.zig and host/
 --   zig build, which builds the example's archive and the harness
 --   zig build test, held to exactly `tests_expected` tests
@@ -32,8 +33,8 @@
 --     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
 --     with the indicator still in it, so the two cannot differ by it alone
 
-const tests_expected = 5
-const roc_tests_expected = 187
+const tests_expected = 8
+const roc_tests_expected = 189
 const pngs_expected = 8
 -- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
 -- to the scene, the adapter or the rasterizer moves it, in the same commit.
@@ -62,7 +63,7 @@ local formatted = 0
 for d in roc_dirs do formatted = formatted + #glob(d .. "/**/*.roc") end
 line("roc fmt --check", r.code == 0, formatted .. " files, " .. lines(trim(r.out))[1], r.ms)
 
-for root in {"examples/basic/main.roc", "screensavers/lanterns/main.roc", "screensavers/lanterns/web.roc"} do
+for root in {"examples/basic/main.roc", "examples/keys/main.roc", "screensavers/lanterns/main.roc", "screensavers/lanterns/web.roc"} do
   r = run({roc, "check", root}, {timeout_ms = 60000, whole = 200000})
   local errors = #find_all(r.out, "── ✗")
   local warnings = #find_all(r.out, "── ●")

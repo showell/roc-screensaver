@@ -1241,6 +1241,52 @@ comptime {
     }
 }
 
+/// Element type for __AnonStruct_a13e255bce1ac28e
+pub const __AnonStruct_a13e255bce1ac28e = if (@sizeOf(usize) == 4) extern struct {
+    held: u32,
+    struck: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    held: u32,
+    struck: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct_a13e255bce1ac28e) != 8) @compileError("__AnonStruct_a13e255bce1ac28e size mismatch");
+        if (@alignOf(__AnonStruct_a13e255bce1ac28e) != 4) @compileError("__AnonStruct_a13e255bce1ac28e alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(__AnonStruct_a13e255bce1ac28e) != 8) @compileError("__AnonStruct_a13e255bce1ac28e size mismatch");
+        if (@alignOf(__AnonStruct_a13e255bce1ac28e) != 4) @compileError("__AnonStruct_a13e255bce1ac28e alignment mismatch");
+    }
+}
+
 /// Tag discriminant for HiddenOrShown.
 pub const HiddenOrShownTag = enum(u8) {
     Hidden = 0,
@@ -1486,6 +1532,7 @@ pub const EllipticalOrLinearOrRadialOrRoundOrSolidLinearTo = __AnonStruct_2818a5
 pub const EllipticalOrLinearOrRadialOrRoundOrSolidRadialCenter = __AnonStruct_2818a50bdccefb1e;
 pub const FrameBackground = __AnonStruct_17abfb53b60747e4;
 pub const HiddenOrShownShown = __AnonStruct_fb6bedc923d48721;
+pub const Step_for_hostArg2 = __AnonStruct_a13e255bce1ac28e;
 
 // Generated Refcount Helpers
 
@@ -1645,6 +1692,12 @@ pub const __AnonStruct_f196eab014f1aecdRelease = struct {
 
 pub const __AnonStruct_6faaa4ff65af2aabRelease = struct {
     pub fn release(value: __AnonStruct_6faaa4ff65af2aab, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
+
+pub const __AnonStruct_a13e255bce1ac28eRelease = struct {
+    pub fn release(value: __AnonStruct_a13e255bce1ac28e, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -1842,7 +1895,7 @@ pub extern fn roc_release_frame(arg0: Frame) callconv(.c) void;
 pub extern fn roc_release_model(arg0: RocBox) callconv(.c) void;
 
 /// Entrypoint: step_for_host
-pub extern fn roc_step(arg0: RocBox, arg1: u64) callconv(.c) RocBox;
+pub extern fn roc_step(arg0: RocBox, arg1: u64, arg2: __AnonStruct_a13e255bce1ac28e) callconv(.c) RocBox;
 
 /// Entrypoint: width_for_host
 pub extern fn roc_width() callconv(.c) u32;
