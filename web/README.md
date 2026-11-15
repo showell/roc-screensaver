@@ -14,7 +14,7 @@ under the pill. Firefox compiles a wasm module twice, a quick tier and then
 an optimizing one in the background, and frames drawn before it switches run
 slowly. So the runner computes, decodes and paints throwaway frames of the
 same model, onto a canvas a few pixels wide, for up to 0.4 s, stopping sooner
-once the frames have plainly sped up and settled. Then it fades the pill and
+(but not before 0.15 s) once the frames have plainly sped up and settled. Then it fades the pill and
 starts the ride from that same frame. Nothing in the warm-up steps the model.
 A skin without the pill takes it down as soon as the wasm is read; the
 warm-up runs either way.
