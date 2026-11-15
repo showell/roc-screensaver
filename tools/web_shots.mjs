@@ -144,10 +144,10 @@ function atStep(step) {
 const INDICATOR_UP = "document.getElementById('warming-indicator') !== null";
 
 // What the page's skin put under the canvas: the keyboard help's text and each
-// link's words and address, as the reader sees them.
+// link's words, address and where it opens, as the reader meets them.
 const SKIN_SEEN = `(() => {
   const help = document.getElementById('keyboard-help');
-  const links = [...document.querySelectorAll('#skin-links a')].map((a) => a.textContent + ' ' + a.getAttribute('href'));
+  const links = [...document.querySelectorAll('#skin-links a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + (a.getAttribute('target') === '_blank' ? ' in a new tab' : ' in this tab'));
   return { help: help ? help.textContent : null, links };
 })()`;
 

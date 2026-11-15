@@ -299,6 +299,10 @@ function dressCanvas(dressing) {
     for (const { label, url } of skin.links) {
       const link = document.createElement('a');
       link.href = url;
+      // A link opens in a new tab, so following one leaves the screensaver
+      // playing; noopener keeps the new page from reaching back to this one.
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
       link.textContent = label;
       link.style.cssText = 'color:#8f9cc8;text-decoration:none';
       link.addEventListener('mouseenter', () => { link.style.textDecoration = 'underline'; });

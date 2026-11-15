@@ -32,7 +32,8 @@
 --     ride's first drawn frame the same as `?step=N`'s for the steps it shows,
 --     so the warm-up left the model alone; Steve's skin (web.roc) under the
 --     canvas: the keyboard help made from the app's three controls, and the
---     links Home and Code with their addresses, each line held exactly; and
+--     links Home and Code with their addresses, each opening in a new tab,
+--     each line held exactly; and
 --     two screenshots 1.5 s apart with no input differ, so the page animates.
 --     The shots come 1.3 s after the first frame, past the warm-up (at most
 --     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
@@ -44,7 +45,7 @@ const roc_web_tests_expected = 213
 -- What Steve's skin puts under the lanterns' canvas, as tools/web_shots.mjs
 -- reads it off the page.
 const skin_help_expected = "skin help: Space pauses and resumes · R restarts at dawn · → skips ahead a crossing"
-const skin_links_expected = "skin links: Home https://roc.lynrummy.com, Code https://github.com/showell/roc-screensaver"
+const skin_links_expected = "skin links: Home https://roc.lynrummy.com in a new tab, Code https://github.com/showell/roc-screensaver in a new tab"
 const pngs_expected = 8
 -- The lanterns screensaver's eighth frame, as raster.zig paints it. A change
 -- to the scene, the adapter or the rasterizer moves it, in the same commit.

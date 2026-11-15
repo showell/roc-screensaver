@@ -102,7 +102,7 @@ dresses it in `Skin.bare`, which shows nothing). It holds:
   restarts at dawn · → skips ahead a crossing"). A native runner ignores
   `controls`.
 - **`links`**: a list of `{ label, url }`, shown as small text links beside
-  the help.
+  the help, each opening in a new tab (`noopener noreferrer`).
 
 The page reads it once, at the start: the web platform's `dressing` entry
 answers a boxed `Skin.Dressing`, the skin with the help line, and the
