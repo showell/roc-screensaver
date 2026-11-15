@@ -73,6 +73,7 @@ You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
     zig build                     # lanterns' archive, then the PNG harness
     zig build png -- out/x        # its first 8 frames, out/x/frame-000.png ...
     zig build png -- out/x 48     # the frame after 48 steps, out/x/step-048.png
+    zig build bench -Doptimize=ReleaseFast   # one cycle's frame times by phase, then win32's two-worker pipeline (about a minute)
     zig build test                # the seam against roc glue, frames painted and freed, keys
     zig build -Dwindows           # zig-out/bin/screensaver.exe and .scr (x86_64-windows, from Linux too)
     shale tools/web_build.shale   # the page, into the dev channel (opt=dev: quick; dest=NAME: another folder)
@@ -90,8 +91,46 @@ windows-screensaver` fetches it.
   the page's stills at the same steps, and the Windows build passes on GitHub
   with the harness's checksum.
 - **Untested:** nobody has yet run the `.scr` on a real Windows machine. Its
-  fullscreen, preview and window modes have only been compiled, and whether
-  it holds 30 frames a second fullscreen is unknown.
+  fullscreen, preview and window modes have only been compiled.
+- **Too slow for 30 frames a second:** lanterns' frames take about four
+  times the budget to rasterize. `win32.zig` rasterizes every frame at the
+  app's size times `raster.SS`, 1920 by 1200, in every mode, and GDI's
+  HALFTONE stretch fits that to the window, or in `/s` to the monitor's
+  shape, whatever its aspect (a 16:9 monitor squeezes the 16:10 frame). Two
+  workers each rasterize whole frames, alternately. `zig build bench`
+  measures it on Linux (this box: two DigitalOcean vCPUs, ReleaseFast),
+  stepping the whole 1350-step cycle and drawing every sixth step, against
+  33.3 ms a frame:
+
+  | phase (one thread) | median | p95 | worst |
+  |---|---|---|---|
+  | Roc frame (`roc_frame` and its release) | 1.35 ms | 1.98 ms | 2.19 ms |
+  | Roc step | 0.00 ms | 0.01 ms | 0.02 ms |
+  | words, written and copied into a slot | 0.01 ms | 0.03 ms | 0.06 ms |
+  | raster: the sky and grass, then the sun | 1.28 ms | 1.52 ms | 5.44 ms |
+  | raster: the shapes | 113.0 ms | 143.2 ms | 161.0 ms |
+  | the whole frame | 116.5 ms | 146.3 ms | 164.6 ms |
+
+  Every drawn frame is over the budget, and all but a few milliseconds of
+  each is raster.zig filling shapes. Of that, `Linear` fills take 52% (56
+  shapes a frame: the sky's and the grass's gradients, which between them
+  cover the frame, the cut spans, and the translucent flat brushes, which
+  the adapter makes two-stop gradients), `Radial` 33% (28 a frame: the
+  halos, the lamps' and the sun's 300-pixel glow) and `Round` 12% (2 a
+  frame); the 114 solid polygons take 0.2 ms and the 53 elliptical ones
+  1.6 ms. Win32's two-worker pipeline reproduced here gives 10.4 frames a
+  second on two cores; four cores would give at most about 17. The slowest
+  frames fall at dawn (step 192, 160 ms) and early in the plane's crossing
+  (step 516, 165 ms); the jets (worst 133 ms) and the empty sky are no worse
+  than the rest, and runs on this shared box move the worst frame by tens of
+  milliseconds. Holding 30 frames a second wants the gradient fills two to
+  four times cheaper, in raster.zig: a vertical gradient (the sky, the
+  grass) worked out once a row rather than once a pixel, a translucent flat
+  brush blended as one colour rather than a two-stop gradient, or raster.SS
+  at 1, a quarter of the pixels. GDI's stretch to the
+  monitor is not measured. The Windows workflow builds Debug, which
+  rasterizes about 3.5 times slower again (490 ms against 138 ms at step
+  174); the artifact wants `-Doptimize=ReleaseFast`.
 - **No Linux window:** Linux gets the PNG harness only.
 
 ## Layout

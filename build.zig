@@ -7,6 +7,9 @@ const std = @import("std");
 ///   zig build png -- <out dir> [step ...]
 ///                                the headless harness: the first frames as
 ///                                PNGs, or the frames at the steps named
+///   zig build bench -Doptimize=ReleaseFast
+///                                one cycle's frame times, by phase, and
+///                                through win32.zig's two-worker pipeline
 ///   zig build test               the host's tests: the seam against roc glue,
 ///                                the basic example's frames painted and
 ///                                freed, and the keys example's keys
@@ -44,6 +47,12 @@ pub fn build(b: *std.Build) void {
     png.addPassthruArgs();
     png.stdio = .inherit;
     b.step("png", "The headless harness: -- <out dir> [step ...], the app's frames as PNGs").dependOn(&png.step);
+
+    // Built only for its own step, so `zig build` stays as quick as it was.
+    const bench = b.addRunArtifact(withApp(b, "bench", "host/bench_main.zig", app, target, optimize));
+    bench.stdio = .inherit;
+    bench.has_side_effects = true;
+    b.step("bench", "The frame-time bench: one cycle's frames timed by phase, then win32's pipeline (with -Doptimize=ReleaseFast, as Windows builds)").dependOn(&bench.step);
 
     const tests = b.step("test", "The host's tests: the seam against roc glue, the basic example's frames painted and freed, and the keys example's keys");
     const basic = rocArchive(b, roc, "examples/basic/main.roc", "x64musl", "basic-x64musl.a");
