@@ -76,6 +76,9 @@ pub fn build(b: *std.Build) void {
     const keys_test = b.createModule(.{ .root_source_file = b.path("host/keys_test.zig"), .target = target, .optimize = optimize });
     keys_test.addObjectFile(keys);
     tests.dependOn(&testRun(b, keys_test).step);
+    // raster.zig's fast paths against its per-pixel rule: no app archive.
+    const raster_test = b.createModule(.{ .root_source_file = b.path("host/raster_test.zig"), .target = target, .optimize = optimize });
+    tests.dependOn(&testRun(b, raster_test).step);
 }
 
 /// The app on platform/, built by the pinned Roc for one of the platform's

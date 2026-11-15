@@ -41,7 +41,7 @@
 --     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
 --     with the indicator still in it, so the two cannot differ by it alone
 
-const tests_expected = 8
+const tests_expected = 13
 const roc_tests_expected = 233
 const roc_web_tests_expected = 227
 -- What Steve's skin puts under the lanterns' canvas, as tools/web_shots.mjs

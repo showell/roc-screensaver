@@ -279,6 +279,17 @@ fn glowColor(t: f32) Rgba {
 
 // ---- the draw-command walk: one fill per polygon, in paint order. ----
 pub fn walk(fb: Fb, roll: Roll, words: []const u32) void {
+    walkWith(fb, roll, words, .fast);
+}
+
+/// How a polygon's pixels get their colours. `fast` is what every frame
+/// uses: a fill whose colour is the same along a row, or down a column, works
+/// it out once a row or once a column (fillPoly's `Plan`). `per_pixel` works
+/// out every pixel's colour from its own design point, the plain rule the
+/// fast paths must match; raster_test.zig holds them to it.
+pub const Paths = enum { fast, per_pixel };
+
+pub fn walkWith(fb: Fb, roll: Roll, words: []const u32, comptime paths: Paths) void {
     var w: usize = 0;
     while (w < words.len) {
         const tag = words[w];
@@ -302,7 +313,7 @@ pub fn walk(fb: Fb, roll: Roll, words: []const u32) void {
                 const n = words[w + 5];
                 w += 6;
                 const sh = Shader{ .radial = .{ .c0 = c0, .c1 = c1, .cx = cx, .cy = cy, .r = r } };
-                w = fillPoly(fb, roll, words, w, n, sh, r >= 0.5);
+                w = fillPoly(fb, roll, words, w, n, sh, r >= 0.5, paths);
             },
             5 => { // 2-stop linear-gradient polygon — the bull's flat shading panels
                 const c0 = words[w];
@@ -316,7 +327,7 @@ pub fn walk(fb: Fb, roll: Roll, words: []const u32) void {
                 const n = words[w + 8];
                 w += 9;
                 const sh = Shader{ .linear = .{ .c0 = c0, .c1 = c1, .o0 = stopAt(o0, 0), .o1 = stopAt(o1, stopAt(o0, 0)), .ax = ax, .ay = ay, .bx = bx, .by = by } };
-                w = fillPoly(fb, roll, words, w, n, sh, true);
+                w = fillPoly(fb, roll, words, w, n, sh, true, paths);
             },
             6 => { // 2-stop radial-(ellipse)-gradient polygon — the bull's rounded muscle shading
                 const c0 = words[w];
@@ -336,7 +347,7 @@ pub fn walk(fb: Fb, roll: Roll, words: []const u32) void {
                     Shader{ .solidAlpha = .{ .rgba = c0 } } // degenerate -> solid stop-0 colour
                 else
                     Shader{ .ellipse = .{ .c0 = c0, .c1 = c1, .o0 = stopAt(o0, 0), .o1 = stopAt(o1, stopAt(o0, 0)), .cx = cx, .cy = cy, .ux = ux, .uy = uy, .vx = vx, .vy = vy, .det = det } };
-                w = fillPoly(fb, roll, words, w, n, sh, true);
+                w = fillPoly(fb, roll, words, w, n, sh, true, paths);
             },
             1 => { // round (horizontal cylinder) gradient, with a per-poly shade strength
                 const color = words[w];
@@ -357,13 +368,13 @@ pub fn walk(fb: Fb, roll: Roll, words: []const u32) void {
                     Shader{ .solid = color }
                 else
                     Shader{ .round = .{ .lo = shadeClamp(color, 1.0 - 0.4 * strength), .mid = shadeClamp(color, 1.0 + 0.25 * strength), .minx = minx, .maxx = maxx } };
-                w = fillPoly(fb, roll, words, w, n, sh, true);
+                w = fillPoly(fb, roll, words, w, n, sh, true, paths);
             },
             else => { // tag 0 = solid
                 const color = words[w];
                 const n = words[w + 1];
                 w += 2;
-                w = fillPoly(fb, roll, words, w, n, Shader{ .solid = color }, true);
+                w = fillPoly(fb, roll, words, w, n, Shader{ .solid = color }, true, paths);
             },
         }
     }
@@ -382,7 +393,7 @@ const Shader = union(enum) {
 // fillPoly reads `n` design-space points starting at word `w`, rotates them to screen
 // space, scanline-fills the polygon under `shader`, and returns the word index past the
 // points. `do_fill=false` consumes the points without drawing (e.g. a degenerate beam).
-fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Shader, do_fill: bool) usize {
+fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Shader, do_fill: bool, comptime paths: Paths) usize {
     // Per-CALL scratch (NOT module-global): the native renderer runs on parallel worker threads
     // (win32.zig), so a shared xs/sp would let two frames corrupt each other's scanline spans →
     // horizontal streaks. Stack-local is also faster here than TLS (no indirection in the loop).
@@ -399,13 +410,44 @@ fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Sh
 
     var miny: f32 = std.math.inf(f32);
     var maxy: f32 = -std.math.inf(f32);
+    var minx: f32 = std.math.inf(f32);
+    var maxx: f32 = -std.math.inf(f32);
     for (sp[0..nv]) |p| {
         if (p.y < miny) miny = p.y;
         if (p.y > maxy) maxy = p.y;
+        if (p.x < minx) minx = p.x;
+        if (p.x > maxx) maxx = p.x;
     }
     var y: i64 = @max(0, @as(i64, @intFromFloat(@floor(miny))));
     const ylast: i64 = @min(@as(i64, @intCast(fb.h)) - 1, @as(i64, @intFromFloat(@ceil(maxy))));
     const upright = roll.st == 0.0; // no roll → design = pixel·inv_ss, no per-pixel un-rotation
+
+    // The fast paths, planned once a polygon. Upright only: a roll turns each
+    // row's design coordinates, and those frames take the per-pixel walk.
+    var plan: Plan = if (paths == .fast and upright) planOf(shader) else .per_pixel;
+    // A `by_column` fill's colour at each pixel column the polygon covers,
+    // from `col_x0`, and whether every one of them is opaque. Per call, like
+    // sp and xs, so two workers never share it.
+    var col_lut: [col_lut_len]u32 = undefined;
+    var col_x0: i64 = 0;
+    var col_opaque = true;
+    if (plan == .by_column) {
+        col_x0 = @max(0, @as(i64, @intFromFloat(@floor(minx))));
+        const col_last: i64 = @min(@as(i64, @intCast(fb.w)) - 1, @as(i64, @intFromFloat(@ceil(maxx))));
+        if (col_last - col_x0 + 1 > col_lut_len) {
+            plan = .per_pixel;
+        } else {
+            // Any row's design y gives the same colours: the fill reads only x.
+            const dy = (@as(f32, @floatFromInt(y)) + 0.5) * roll.inv_ss;
+            var x: i64 = col_x0;
+            while (x <= col_last) : (x += 1) {
+                const c = colorAt(shader, .{ .x = (@as(f32, @floatFromInt(x)) + 0.5) * roll.inv_ss, .y = dy });
+                col_lut[@intCast(x - col_x0)] = c;
+                if (c >> 24 != 0xff) col_opaque = false;
+            }
+        }
+    }
+
     while (y <= ylast) : (y += 1) {
         const yc = @as(f32, @floatFromInt(y)) + 0.5;
         var nx: usize = 0;
@@ -424,71 +466,131 @@ fn fillPoly(fb: Fb, roll: Roll, words: []const u32, w: usize, n: u32, shader: Sh
             }
         }
         insertionSort(xs[0..nx]);
-        const solid_color: ?u32 = switch (shader) {
-            .solid => |cc| cc & 0xffffff,
-            else => null,
-        };
         var s: usize = 0;
         while (s + 1 < nx) : (s += 2) {
             var xa: i64 = @intFromFloat(@ceil(xs[s] - 0.5));
             var xb: i64 = @intFromFloat(@floor(xs[s + 1] - 0.5));
             if (xa < 0) xa = 0;
             if (xb > @as(i64, @intCast(fb.w)) - 1) xb = @as(i64, @intCast(fb.w)) - 1;
+            if (xa > xb) continue;
             const rowbase = @as(usize, @intCast(y)) * fb.w;
-            // Solid fills (mountains/road/most critters) don't use the per-pixel design
-            // coord — tight store loop, no toDesign/shade call. This is the bulk of the area.
-            if (solid_color) |sc| {
-                var x: i64 = xa;
-                while (x <= xb) : (x += 1) fb.px[rowbase + @as(usize, @intCast(x))] = sc;
-                continue;
-            }
-            if (upright) {
-                // design.y is constant across the scanline; design.x = (x+0.5)·inv_ss (exact,
-                // = toDesign at st==0) — one multiply, no rotation. Common case (straight road).
-                const dy = yc * roll.inv_ss;
-                var x: i64 = xa;
-                while (x <= xb) : (x += 1) {
-                    const dx = (@as(f32, @floatFromInt(x)) + 0.5) * roll.inv_ss;
-                    shadePixel(fb, rowbase + @as(usize, @intCast(x)), shader, .{ .x = dx, .y = dy });
-                }
-            } else {
-                var x: i64 = xa;
-                while (x <= xb) : (x += 1) {
-                    const d = roll.toDesign(@as(f32, @floatFromInt(x)) + 0.5, yc);
-                    shadePixel(fb, rowbase + @as(usize, @intCast(x)), shader, d);
-                }
+            const run = fb.px[rowbase + @as(usize, @intCast(xa)) .. rowbase + @as(usize, @intCast(xb)) + 1];
+            switch (plan) {
+                // Solid fills (mountains/road/most critters) don't use the per-pixel design
+                // coord — tight store loop, no toDesign/shade call. This is the bulk of the area.
+                .solid => |sc| @memset(run, sc),
+                .by_row => {
+                    // design.y is constant across the scanline, and the fill reads nothing
+                    // else, so the run's first pixel's colour is every pixel's.
+                    const dx = (@as(f32, @floatFromInt(xa)) + 0.5) * roll.inv_ss;
+                    blendRun(run, colorAt(shader, .{ .x = dx, .y = yc * roll.inv_ss }));
+                },
+                .by_column => {
+                    const from: usize = @intCast(xa - col_x0);
+                    const cols = col_lut[from .. from + run.len];
+                    if (col_opaque) {
+                        for (run, cols) |*px, c| px.* = c & 0xffffff;
+                    } else {
+                        for (run, cols) |*px, c| blendOne(px, c);
+                    }
+                },
+                .per_pixel => if (upright) {
+                    // design.y is constant across the scanline; design.x = (x+0.5)·inv_ss (exact,
+                    // = toDesign at st==0) — one multiply, no rotation. Common case (straight road).
+                    const dy = yc * roll.inv_ss;
+                    var x: i64 = xa;
+                    while (x <= xb) : (x += 1) {
+                        const dx = (@as(f32, @floatFromInt(x)) + 0.5) * roll.inv_ss;
+                        shadePixel(fb, rowbase + @as(usize, @intCast(x)), shader, .{ .x = dx, .y = dy });
+                    }
+                } else {
+                    var x: i64 = xa;
+                    while (x <= xb) : (x += 1) {
+                        const d = roll.toDesign(@as(f32, @floatFromInt(x)) + 0.5, yc);
+                        shadePixel(fb, rowbase + @as(usize, @intCast(x)), shader, d);
+                    }
+                },
             }
         }
     }
     return end;
 }
 
-fn shadePixel(fb: Fb, idx: usize, shader: Shader, d: Pt) void {
-    switch (shader) {
-        .solid => |c| fb.px[idx] = c & 0xffffff,
-        .solidAlpha => |s| {
-            const a = @as(f32, @floatFromInt((s.rgba >> 24) & 0xff)) / 255.0;
-            blend(fb, idx, chan(s.rgba, 16), chan(s.rgba, 8), chan(s.rgba, 0), a);
+/// The widest polygon, in pixels, whose column colours fillPoly keeps: past
+/// it, a `by_column` fill takes the per-pixel walk.
+const col_lut_len = 4096;
+
+/// How fillPoly colours an upright polygon's pixels. Every plan but
+/// `per_pixel` gives exactly the pixels `per_pixel` gives, because it only
+/// skips working out again a colour that cannot have changed.
+const Plan = union(enum) {
+    /// One opaque colour: each run is a memset.
+    solid: u32,
+    /// A colour that depends on design y alone, or on nothing: a vertical
+    /// linear gradient (the sky's, the grass's), a gradient whose two stops
+    /// are one colour (a translucent flat brush), or a gradient too short to
+    /// have a direction. Worked out once a run.
+    by_row,
+    /// A colour that depends on design x alone: a horizontal linear gradient
+    /// (a span's halves) or a round fill. Worked out once a column.
+    by_column,
+    /// Everything else: each pixel's colour from its own design point.
+    per_pixel,
+};
+
+fn planOf(shader: Shader) Plan {
+    return switch (shader) {
+        .solid => |c| .{ .solid = c & 0xffffff },
+        .round => .by_column,
+        .linear => |s| {
+            const dxv = s.bx - s.ax;
+            const dyv = s.by - s.ay;
+            // colorAt's p is ((x-ax)·dxv + (y-ay)·dyv) / len2, so a zero dxv
+            // leaves only y, and a zero dyv only x: the other term is ±0, and
+            // adding ±0 to a nonzero term changes nothing, while a ±0 p is
+            // stop 0's colour either way. Equal stop colours give that colour
+            // at any p, since lerpRgba(c, c, t) is c.
+            if (s.c0 == s.c1 or dxv * dxv + dyv * dyv < 1e-6 or dxv == 0.0) return .by_row;
+            if (dyv == 0.0) return .by_column;
+            return .per_pixel;
         },
+        .solidAlpha, .radial, .ellipse => .per_pixel,
+    };
+}
+
+/// A round or linear fill's colour at design point `d`, `0xAARRGGBB`: the
+/// one rule fillPoly's fast paths and shadePixel share.
+fn colorAt(shader: Shader, d: Pt) u32 {
+    return switch (shader) {
         .round => |s| {
             // canvas interpolates the (clamped) stop colours shade(c,0.6)->shade(c,1.25)->shade(c,0.6);
             // lo/mid are per-poly constants (hoisted into the shader), so the loop is just lerp+pack.
             const frac = clamp01((d.x - s.minx) / (s.maxx - s.minx));
             const c = if (frac < 0.5) lerpRgb(s.lo, s.mid, frac / 0.5) else lerpRgb(s.mid, s.lo, (frac - 0.5) / 0.5);
-            fb.px[idx] = c;
-        },
-        .radial => |s| {
-            const r = @sqrt((d.x - s.cx) * (d.x - s.cx) + (d.y - s.cy) * (d.y - s.cy));
-            const t = clamp01(r / s.r);
-            blendStops(fb, idx, s.c0, s.c1, t, 0.0, 1.0);
+            return 0xff000000 | c;
         },
         .linear => |s| {
             const dxv = s.bx - s.ax;
             const dyv = s.by - s.ay;
             const len2 = dxv * dxv + dyv * dyv;
             const p = if (len2 < 1e-6) 0.0 else ((d.x - s.ax) * dxv + (d.y - s.ay) * dyv) / len2;
-            blendStops(fb, idx, s.c0, s.c1, clamp01(p), s.o0, s.o1);
+            return stopColor(s.c0, s.c1, clamp01(p), s.o0, s.o1);
         },
+        .solid, .solidAlpha, .radial, .ellipse => unreachable,
+    };
+}
+
+fn shadePixel(fb: Fb, idx: usize, shader: Shader, d: Pt) void {
+    switch (shader) {
+        .solid => |c| fb.px[idx] = c & 0xffffff,
+        .solidAlpha => |s| blendOne(&fb.px[idx], s.rgba),
+        .round => fb.px[idx] = colorAt(shader, d) & 0xffffff,
+        .radial => |s| {
+            const r = @sqrt((d.x - s.cx) * (d.x - s.cx) + (d.y - s.cy) * (d.y - s.cy));
+            const t = clamp01(r / s.r);
+            blendOne(&fb.px[idx], stopColor(s.c0, s.c1, t, 0.0, 1.0));
+        },
+        .linear => blendOne(&fb.px[idx], colorAt(shader, d)),
         .ellipse => |s| {
             // invert [ux vx; uy vy] to map the design point into unit (gradient) space.
             const ex = d.x - s.cx;
@@ -496,23 +598,42 @@ fn shadePixel(fb: Fb, idx: usize, shader: Shader, d: Pt) void {
             const u = (s.vy * ex - s.vx * ey) / s.det;
             const v = (-s.uy * ex + s.ux * ey) / s.det;
             const r = @sqrt(u * u + v * v);
-            blendStops(fb, idx, s.c0, s.c1, clamp01(r), s.o0, s.o1);
+            blendOne(&fb.px[idx], stopColor(s.c0, s.c1, clamp01(r), s.o0, s.o1));
         },
     }
 }
 
-// blend a 2-stop rgba gradient (stops at o0->c0, o1->c1) sampled at param p, over fb[idx].
-fn blendStops(fb: Fb, idx: usize, c0: u32, c1: u32, p: f32, o0: f32, o1: f32) void {
-    var c: u32 = undefined;
-    if (p <= o0) {
-        c = c0;
-    } else if (p >= o1 or o1 <= o0) {
-        c = c1;
-    } else {
-        c = lerpRgba(c0, c1, (p - o0) / (o1 - o0));
-    }
+// a 2-stop rgba gradient (stops at o0->c0, o1->c1) sampled at param p, as 0xAARRGGBB.
+fn stopColor(c0: u32, c1: u32, p: f32, o0: f32, o1: f32) u32 {
+    if (p <= o0) return c0;
+    if (p >= o1 or o1 <= o0) return c1;
+    return lerpRgba(c0, c1, (p - o0) / (o1 - o0));
+}
+
+// composite one 0xAARRGGBB colour over a pixel: blend, with its alpha from the colour.
+fn blendOne(px: *u32, c: u32) void {
     const a = @as(f32, @floatFromInt((c >> 24) & 0xff)) / 255.0;
-    blend(fb, idx, chan(c, 16), chan(c, 8), chan(c, 0), a);
+    if (a <= 0.0) return;
+    const inv = 1.0 - a;
+    const dst = px.*;
+    px.* = pack(chan(c, 16) * a + chan(dst, 16) * inv, chan(c, 8) * a + chan(dst, 8) * inv, chan(c, 0) * a + chan(dst, 0) * inv);
+}
+
+// composite one 0xAARRGGBB colour over every pixel of a run: blendOne's sums,
+// with the colour's own products worked out once, so the pixels are the same.
+fn blendRun(run: []u32, c: u32) void {
+    const alpha = (c >> 24) & 0xff;
+    if (alpha == 0) return;
+    if (alpha == 0xff) return @memset(run, c & 0xffffff); // a = 1 and inv = 0: the colour itself
+    const a = @as(f32, @floatFromInt(alpha)) / 255.0;
+    const inv = 1.0 - a;
+    const ra = chan(c, 16) * a;
+    const ga = chan(c, 8) * a;
+    const ba = chan(c, 0) * a;
+    for (run) |*px| {
+        const dst = px.*;
+        px.* = pack(ra + chan(dst, 16) * inv, ga + chan(dst, 8) * inv, ba + chan(dst, 0) * inv);
+    }
 }
 
 fn discFill(fb: Fb, roll: Roll, dx: f32, dy: f32, r_design: f32, color: u32, alpha: f32) void {
