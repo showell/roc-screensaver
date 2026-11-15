@@ -84,6 +84,16 @@ BirdFlight := { from : RoadTrees.RoadTree, to : RoadTrees.RoadTree }.{
 	frame_count : U64
 	frame_count = flight_frames.len()
 
+	## How far along its straight line, from the tree it leaves to the one it
+	## lands on, the bird is `steps_in` steps into a flight: the eased share
+	## its path is drawn by, so a camera that moves by it keeps pace.
+	eased_share_at : U64 -> F64
+	eased_share_at = |steps_in|
+		match flight_frames.get(steps_in) {
+			Ok({ through, .. }) => Easing.smoothstep(through).to_f64()
+			Err(OutOfBounds) => crash "BirdFlight.eased_share_at: a step past the flight's last frame"
+		}
+
 	## The bird at `stage` of its flight.
 	bird_instant_at : BirdFlight, BirdFlight.Stage -> BirdFlight.BirdInstant
 	bird_instant_at = |flight, stage|

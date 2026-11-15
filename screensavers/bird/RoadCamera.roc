@@ -54,7 +54,7 @@ RoadCamera :: { along : F64, across : F64, height : F64 }.{
 
 	## Where the horizon crosses the screen.
 	horizon_y : F64
-	horizon_y = 360.0
+	horizon_y = 380.0
 
 	## The nearest a point can be and still be drawn.
 	near_plane : F64
@@ -68,7 +68,7 @@ camera_height = 5.0
 
 ## The lens's focal length in pixels, chosen by eye.
 focal_length : F64
-focal_length = 600.0
+focal_length = 500.0
 
 center_x : F64
 center_x = RoadCamera.screen_width / 2.0
@@ -79,9 +79,9 @@ sample_camera = RoadCamera.at({ along: 100.0, across: 0.0 })
 # A point at the camera's height straight ahead is on the horizon in the
 # middle, one to the right lands right of the middle, and one below the camera
 # lands below the horizon.
-expect sample_camera.project({ along: 130.0, across: 0.0, lift: 5.0 }) == Ok(Point.at(480.0, 360.0))
-expect sample_camera.project({ along: 130.0, across: 3.0, lift: 5.0 }) == Ok(Point.at(540.0, 360.0))
-expect sample_camera.project({ along: 130.0, across: 0.0, lift: 2.0 }) == Ok(Point.at(480.0, 420.0))
+expect sample_camera.project({ along: 125.0, across: 0.0, lift: 5.0 }) == Ok(Point.at(480.0, 380.0))
+expect sample_camera.project({ along: 125.0, across: 3.0, lift: 5.0 }) == Ok(Point.at(540.0, 380.0))
+expect sample_camera.project({ along: 125.0, across: 0.0, lift: 2.0 }) == Ok(Point.at(480.0, 440.0))
 
 # A point at the near plane is drawn, and one just short of it is not.
 expect sample_camera.project({ along: 101.0, across: 0.0, lift: 5.0 }).is_ok()

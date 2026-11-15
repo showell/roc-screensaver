@@ -5,17 +5,19 @@
 ## The model is one flight and how many steps into it the screensaver is, so it
 ## stays the same size however long it plays. Each leg of the bird's journey is
 ## a perch, then a flight; when a leg ends, the next flight starts from the tree
-## the bird landed on. The camera moves down the road at a steady pace through
-## each leg, so it closes on the perched bird and the bird then flies off ahead
-## of it.
+## the bird landed on. The camera closes on the perched bird, easing in and to
+## a stop, then follows it across with the flight's own easing as the bird
+## draws away from it.
 import Bird
 import BirdFlight
 import ConiferShapes
+import Easing
 import RoadCamera
 import RoadTrees
 import StillOnScreen
 import lib.Brush
 import lib.CanvasApp
+import lib.Fraction
 import lib.Input
 import lib.Pixels
 import lib.Point
@@ -52,6 +54,12 @@ leg_steps = perch_steps + BirdFlight.frame_count
 follow_distance : F64
 follow_distance = 30.0
 
+## How far the camera closes on the perched bird before it takes off, chosen
+## by eye. Whatever the hop, the bird takes off `follow_distance` less this
+## ahead of the camera, so its tree's top stays on the screen.
+perch_approach : F64
+perch_approach = 8.0
+
 ## How far ahead of the camera a tree is still drawn.
 view_depth : F64
 view_depth = 400.0
@@ -75,14 +83,27 @@ flight_stage = |steps_into_leg|
 		Playing(steps_into_leg - perch_steps)
 	}
 
-## The camera `steps_into_leg` steps into the leg of `flight`: from
-## `follow_distance` behind the tree the bird leaves to as far behind the tree
-## it lands on, at a steady pace.
+## The camera `steps_into_leg` steps into the leg of `flight`. Through the
+## perch it eases from `follow_distance` behind the tree the bird leaves to
+## `perch_approach` nearer; through the flight it eases on to `follow_distance`
+## behind the tree the bird lands on. It stops at each end of each part, so its
+## pace never jumps.
 camera_at : BirdFlight, U64 -> RoadCamera
 camera_at = |flight, steps_into_leg| {
 	{ from, to } = flight.trees()
-	share = steps_into_leg.to_f64() / leg_steps.to_f64()
-	along = from.along + (to.along - from.along) * share - follow_distance
+	start = from.along - follow_distance
+	at_takeoff = start + perch_approach
+	along =
+		match flight_stage(steps_into_leg) {
+			Waiting => {
+				through = Fraction.of(steps_into_leg.to_f64() / perch_steps.to_f64())
+				start + perch_approach * Easing.smoothstep(through).to_f64()
+			}
+			Playing(steps_in) => {
+				finish = to.along - follow_distance
+				at_takeoff + (finish - at_takeoff) * BirdFlight.eased_share_at(steps_in)
+			}
+		}
 	RoadCamera.at({ along, across: 0.0 })
 }
 
@@ -98,7 +119,7 @@ frame_shapes = |{ flight, steps_into_leg }| {
 	})
 	drawn_trees = trees.keep_oks(|tree| drawn_tree(camera, tree))
 	bird = flight.bird_instant_at(flight_stage(steps_into_leg))
-	drawn_bird = drawn_bird_of(camera, { bird, heading: flight.heading() })
+	drawn_bird = drawn_bird_of(camera, { bird, flight })
 	# Farthest first, so a nearer thing paints over a farther one.
 	by_distance = drawn_trees.concat(drawn_bird).sort_with(
 		|a, b|
@@ -127,20 +148,23 @@ drawn_tree = |camera, tree| {
 
 ## The bird on the screen, if it is in front of the camera, as a list of none
 ## or one.
-drawn_bird_of : RoadCamera, { bird : BirdFlight.BirdInstant, heading : BirdFlight.Heading } -> List(Drawn)
-drawn_bird_of = |camera, { bird, heading }|
+drawn_bird_of : RoadCamera, { bird : BirdFlight.BirdInstant, flight : BirdFlight } -> List(Drawn)
+drawn_bird_of = |camera, { bird, flight }|
 	match camera.project(bird.location) {
 		Err(BehindCamera) => []
 		Ok(foot) => {
 			forward = camera.forward_of(bird.location.along)
 			anchor = {
 				foot,
-				flip: Bird.pose_flip(bird.pose, heading),
+				flip: Bird.pose_flip(bird.pose, flight.heading()),
 				height_on_screen: RoadCamera.size_on_screen({ height: Bird.height_metres, forward }),
 			}
-			# A tree's own foliage would hide a bird perched on its tip, so the
-			# bird is drawn just nearer than the tree it stands on.
-			[{ forward: forward - 0.01, shapes: StillOnScreen.still_shapes(anchor, Bird.pose_still(bird.pose)) }]
+			# A tree is drawn flat, as wide at the bird's depth as at its own, so
+			# the two trees of a flight would hide a bird that is above their
+			# tips. The bird is drawn just nearer than both.
+			{ from, to } = flight.trees()
+			nearest = forward.min(camera.forward_of(from.along)).min(camera.forward_of(to.along))
+			[{ forward: nearest - 0.01, shapes: StillOnScreen.still_shapes(anchor, Bird.pose_still(bird.pose)) }]
 		}
 	}
 
@@ -244,7 +268,19 @@ expect {
 # The camera ends a leg where it starts the next, so it never jumps.
 expect {
 	flight = BirdFlight.first
-	camera_at(flight, leg_steps).along() == camera_at(flight.next(), 0).along()
+	{ to, .. } = flight.trees()
+	last_of_leg = camera_at(flight, leg_steps - 1).along()
+	last_of_leg == to.along - follow_distance and camera_at(flight.next(), 0).along() == last_of_leg
+}
+
+# The camera closes on the perched bird and stops there as it takes off.
+expect {
+	flight = BirdFlight.first
+	{ from, .. } = flight.trees()
+	at_takeoff = from.along - follow_distance + perch_approach
+	camera_at(flight, perch_steps).along() == at_takeoff
+		and camera_at(flight, perch_steps / 2).along() > from.along - follow_distance
+		and camera_at(flight, perch_steps / 2).along() < at_takeoff
 }
 
 # A frame draws the backdrop, the trees and the bird.
