@@ -77,7 +77,8 @@ A screensaver is a folder in `screensavers/` with two roots over one app:
 - **`page.html`**, which names the wasm, `<folder>.wasm`.
 - **a line in `screensavers/list.txt`**, the one place that names the
   screensavers: its folder, the checksum of its eighth native frame, its
-  expect counts and its keyboard help. The page's build, the gate and the
+  expect counts, the step of its landing-page picture (`shot.png`, or `-`
+  for none) and its keyboard help. The page's build, the gate and the
   Windows workflow each take every screensaver listed there, so a new one
   is one more line (the file's header says what each field is).
 
@@ -103,7 +104,7 @@ You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
     zig build bench -Doptimize=ReleaseFast   # one cycle's frame times by phase, then win32's two-worker pipeline (about a minute)
     zig build test                # the seam against roc glue, frames painted and freed, keys, raster's fast paths
     zig build -Dwindows           # zig-out/bin/lanterns.exe and .scr (x86_64-windows, ReleaseFast, from Linux too)
-    shale tools/web_build.shale   # every listed screensaver's page, into the dev channel (saver=NAME: one; opt=dev: quick; dest=NAME: another folder)
+    shale tools/web_build.shale   # every listed screensaver's page and shot.png, into the dev channel (saver=NAME: one; opt=dev: quick; dest=NAME: another folder)
     shale tools/verify.shale      # the gate: every check above for every listed screensaver, and the live pages, a line each
     shale tools/glue.shale        # after a change to platform/: roc glue's snapshot again
 

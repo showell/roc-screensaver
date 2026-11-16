@@ -30,7 +30,8 @@
 --     CI's workflow does, and holds its checksum to the line's
 --   tools/web_build.shale, the page built into the dev channel's folder
 --     (its name, or <name>-<branch>) as it is served, the release
---     (`--opt=speed`) wasm, held to the files it serves and to BUILT saying
+--     (`--opt=speed`) wasm, held to the files it serves (shot.png among them
+--     for a screensaver whose line names a shot step) and to BUILT saying
 --     `opt speed`
 --   the live page, loaded from the dev server in headless Chromium
 --     (tools/web_shots.mjs): no console error; the first frame shown still
@@ -122,8 +123,10 @@ function page_lines(saver, folder)
   local wasm = saver.name .. ".wasm"
   local r = run({"shale", "tools/web_build.shale", "saver=" .. saver.name, "dest=" .. folder}, {timeout_ms = 300000, tail = 20})
   local served = "build:roc-apps/next/" .. folder
+  local files = {"index.html", wasm, "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"}
+  if has_key(saver, "shot_step") then push(files, "shot.png") end
   local pieces = 0
-  for f in {"index.html", wasm, "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"} do
+  for f in files do
     if exists(served .. "/" .. f) then pieces = pieces + 1 end
   end
   local release = exists(served .. "/BUILT") and contains(read(served .. "/BUILT"), "\nopt speed\n")
@@ -131,8 +134,8 @@ function page_lines(saver, folder)
   if exists(served .. "/" .. wasm) then wasm_size = "a " .. stat(served .. "/" .. wasm).size .. "-byte wasm" end
   local opt_said = "opt speed"
   if not release then opt_said = "BUILT does not say opt speed" end
-  if r.code ~= 0 or pieces ~= 5 or not release then print(r.out) end
-  line("web build " .. saver.name, r.code == 0 and pieces == 5 and release, pieces .. " of 5 files served at " .. page_url .. ", " .. opt_said .. ", " .. wasm_size, r.ms)
+  if r.code ~= 0 or pieces ~= #files or not release then print(r.out) end
+  line("web build " .. saver.name, r.code == 0 and pieces == #files and release, pieces .. " of " .. #files .. " files served at " .. page_url .. ", " .. opt_said .. ", " .. wasm_size, r.ms)
 
   local shots = ".zig-cache/verify-web/" .. saver.name
   if exists(shots) then remove_tree(shots) end

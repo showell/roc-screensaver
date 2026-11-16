@@ -13,6 +13,12 @@
 -- compiler. The wasm is `--opt=speed` unless `opt=dev` says otherwise: it takes
 -- some seconds longer to build and is about a third the size, and its frames
 -- are the ones the page is meant to be seen with. BUILT says which was built.
+-- A screensaver whose list.txt line names a shot step also gets shot.png, the
+-- landing page's picture of it: the native PNG harness's frame at that step
+-- (`zig build png`, which the gate holds to the page's frame at the same
+-- step), squeezed by roc-apps' site/squeeze_png.mjs, and BUILT names the step.
+-- This is the one place a shot is made: roc-apps' site/publish_screensavers.shale
+-- copies the dev channel's folder, shot and all, to staging.
 -- Everything goes to a staging folder that takes the page's place only when every step passed, so a failed build leaves the
 -- served page as it was.
 
@@ -26,9 +32,32 @@ function pinned_roc()
   return roc
 end
 
+const SQUEEZE = "repos:roc-apps/site/squeeze_png.mjs"
+const SQUEEZE_WANT = "script: roc-apps' site/squeeze_png.mjs recompresses the native harness's frame"
+
 -- Roc exits non-zero for a warning, so a build's verdict is its marks.
 function marks_of(out)
   return #find_all(out, "✗") + #find_all(out, "●")
+end
+
+-- shot.png in `staging`: the native harness's frame after `step` steps of
+-- the screensaver `name`, squeezed.
+function make_shot(name, step, staging)
+  if not exists(SQUEEZE) then fail("web_build: no " .. SQUEEZE .. ", which makes " .. name .. "'s shot.png small") end
+  local frames = fresh_dir("build:roc-screensaver", name .. "-shot")
+  local b = run({"zig", "build", "-Dapp=screensavers/" .. name .. "/main.roc", "png", "--", real(frames), "" .. step},
+    {timeout_ms = 300000, tail = 20})
+  if b.code ~= 0 then
+    print(b.out)
+    fail("web_build: the native harness failed on " .. name)
+  end
+  local padded = "" .. step
+  while #padded < 3 do padded = "0" .. padded end
+  local squeezed = must(run({"node", real(SQUEEZE), real(frames .. "/step-" .. padded .. ".png"), real(staging) .. "/shot.png"},
+    {timeout_ms = 60000, tail = 5, want = SQUEEZE_WANT}))
+  remove_tree(frames)
+  print(name .. " shot (step " .. step .. "): " .. (b.ms + squeezed.ms) .. " ms, " .. stat(staging .. "/shot.png").size .. " bytes")
+  return nil
 end
 
 -- One screensaver's page, its wasm and glue built into a staging folder that
@@ -58,7 +87,12 @@ function page_build(roc, page)
   copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
   copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
   copy("screensavers/" .. name .. "/page.html", staging .. "/index.html")
-  create(staging .. "/BUILT", trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n")
+  local built = trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n"
+  if has_key(page, "shot_step") then
+    make_shot(name, page.shot_step, staging)
+    built = built .. "shot.png: the native harness's frame after " .. page.shot_step .. " steps\n"
+  end
+  create(staging .. "/BUILT", built)
 
   if exists(dest) then remove_tree(dest) end
   copy(staging, dest)
@@ -70,13 +104,12 @@ end
 local opt = arg("opt", "speed")
 if opt ~= "speed" and opt ~= "dev" then fail("web_build: opt=" .. opt .. " is neither speed (the default) nor dev") end
 local listed = screensavers_listed()
-local names = {}
-for s in listed do push(names, s.name) end
+local chosen = {}
 local saver = arg("saver", "")
-if saver ~= "" then
-  if not has_item(names, saver) then fail("web_build: saver=" .. saver .. " is not in screensavers/list.txt") end
-  names = {saver}
+for s in listed do
+  if saver == "" or saver == s.name then push(chosen, s) end
 end
+if #chosen == 0 then fail("web_build: saver=" .. saver .. " is not in screensavers/list.txt") end
 -- The dev channel's folder, a plain name, so a branch's build never replaces
 -- the page master's build serves. It names one page, so it needs one saver.
 local dest = arg("dest", "")
@@ -91,8 +124,9 @@ local host = must(run({real("zig016:zig"), "build", "-Droc=" .. real("repos:roc"
   "--cache-dir", real("build:roc-screensaver/zig-cache"), "--global-cache-dir", real("build:zig-global")},
   {cwd = "web", timeout_ms = 300000, tail = 30}))
 print("host: " .. host.ms .. " ms")
-for name in names do
-  local folder = name
-  if dest ~= "" then folder = dest end
-  page_build(roc, {name = name, folder = folder, opt = opt})
+for s in chosen do
+  local page = {name = s.name, folder = s.name, opt = opt}
+  if dest ~= "" then page.folder = dest end
+  if has_key(s, "shot_step") then page.shot_step = s.shot_step end
+  page_build(roc, page)
 end
