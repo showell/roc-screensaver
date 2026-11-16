@@ -118,7 +118,7 @@ end
 -- One screensaver's page built into the dev channel's `folder`, then loaded
 -- there in headless Chromium.
 function page_lines(saver, folder)
-  local page_url = "http://143.244.172.148:9210/" .. folder .. "/"
+  local page_url = "http://localhost:9210/" .. folder .. "/"
   local wasm = saver.name .. ".wasm"
   local r = run({"shale", "tools/web_build.shale", "saver=" .. saver.name, "dest=" .. folder}, {timeout_ms = 300000, tail = 20})
   local served = "build:roc-apps/next/" .. folder

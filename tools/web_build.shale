@@ -1,6 +1,6 @@
 -- web_build.shale builds each screensaver's page in screensavers/list.txt into
 -- the dev channel, ~/build/roc-apps/next/<name>/, which roc-apps' dev server
--- serves at http://143.244.172.148:9210/<name>/.
+-- serves at http://localhost:9210/<name>/.
 --
 --   shale tools/web_build.shale            # every screensaver's page, the release wasm, what is served
 --   shale tools/web_build.shale saver=bubbles          # that screensaver's alone
@@ -64,7 +64,7 @@ function page_build(roc, page)
   copy(staging, dest)
   remove_tree(staging)
   for p in glob(dest .. "/*") do print(p) end
-  print("dev: http://143.244.172.148:9210/" .. page.folder .. "/")
+  print("dev: http://localhost:9210/" .. page.folder .. "/")
 end
 
 local opt = arg("opt", "speed")
