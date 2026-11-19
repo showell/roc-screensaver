@@ -10,7 +10,7 @@ draws ahead through each flight and the camera catches up through each perch.
 ## The cycle
 
 The scene runs in a cycle (`Sunrise.roc`, and the counts in
-`LanternsApp.roc`) of twenty crossings and a closing perch: 20 legs of 66
+`SceneCycle.roc`) of twenty crossings and a closing perch: 20 legs of 66
 steps and 30 more, 1350 steps, 45 seconds at 30 steps a second.
 
 - **The sun** starts hidden behind the far range's ridge, in the notch at its

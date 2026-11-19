@@ -54,8 +54,8 @@ Sunrise :: [].{
 
 	## The far range's outline, left to right, closed along the horizon so it
 	## can be filled. The sun rises out of the notch at its lowest point.
-	far_range : List(Point)
-	far_range = far_ridge.concat([Point.at(960.0, horizon_below), Point.at(0.0, horizon_below)])
+	far_range_corners : List(Point)
+	far_range_corners = far_ridge_points.concat([Point.at(960.0, horizon_below), Point.at(0.0, horizon_below)])
 
 	## How big the sun is.
 	sun_radius : Pixels
@@ -63,8 +63,8 @@ Sunrise :: [].{
 }
 
 ## The far range's ridge line, left to right, chosen by eye.
-far_ridge : List(Point)
-far_ridge = [
+far_ridge_points : List(Point)
+far_ridge_points = [
 	Point.at(0.0, 250.0),
 	Point.at(120.0, 200.0),
 	Point.at(250.0, 238.0),
@@ -107,9 +107,9 @@ sun_center_at = |day|
 ridge_y_at : F64 -> F64
 ridge_y_at = |x| {
 	var $y = horizon_below
-	for k in 0..<(far_ridge.len() - 1) {
-		left = far_ridge.get(k) ?? crash "Sunrise.ridge_y_at: a ridge point inside the list"
-		right = far_ridge.get(k + 1) ?? crash "Sunrise.ridge_y_at: a ridge point inside the list"
+	for k in 0..<(far_ridge_points.len() - 1) {
+		left = far_ridge_points.get(k) ?? crash "Sunrise.ridge_y_at: a ridge point inside the list"
+		right = far_ridge_points.get(k + 1) ?? crash "Sunrise.ridge_y_at: a ridge point inside the list"
 		x0 = left.x.to_f64()
 		x1 = right.x.to_f64()
 		if x >= x0 and x <= x1 {
@@ -159,7 +159,7 @@ sun_against_ridge = |center| {
 # three crossings of the cycle's twenty and a perch (198 of its 1350 steps),
 # peeks over it at the next step, climbs clear of it at step 765, about 0.57
 # of the way, and is clear at the end. Each boundary is pinned at the step
-# either side of it, as `LanternsApp.day_at` reads a step.
+# either side of it, as `SceneCycle.day_at` reads a step.
 expect sun_against_ridge(sun_center_at(Fraction.zero)) == Hidden
 expect sun_against_ridge(sun_center_at(Fraction.of(198.0 / 1350.0))) == Hidden
 expect sun_against_ridge(sun_center_at(Fraction.of(199.0 / 1350.0))) == Touching
