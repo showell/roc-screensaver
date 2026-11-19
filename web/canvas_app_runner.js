@@ -24,6 +24,9 @@
 // `?step=N` shows the frame after N steps and stops there, so a page can be
 // laid beside the native harness's frame at the same step (`zig build png`).
 //
+// `?hold=1` holds the start at each edge of the warm-up until a test lets it
+// go on, so the test sees the still frame there for certain (`holdAt`, below).
+//
 // A moving page starts on its first frame, still, under a small "warming up"
 // pill when its skin shows one, while throwaway frames give the browser time to finish compiling the
 // wasm (the warm-up, below); then the ride starts from that same frame.
@@ -438,6 +441,26 @@ async function warmUp(game, width, height) {
 
 const NO_WARM_UP = { times: [], ms: 0, stoppedBy: 'a still page' };
 
+// With `?hold=1` in the address, the start waits at each edge of the warm-up,
+// just before it and just after it, until the page's watcher calls
+// `window.canvasAppGoOn()`; `data-held` on the canvas names the edge it waits
+// at. A warm-up can be over in under 200 ms, sooner than tools/web_shots.mjs
+// can look on a busy box, so without the holds the check races it. The holds
+// add nothing else: the warm-up and the ride run as they do on any page.
+const holding = new URLSearchParams(location.search).get('hold') === '1';
+
+function holdAt(canvas, edge) {
+  if (!holding) return Promise.resolve();
+  canvas.dataset.held = edge;
+  return new Promise((done) => {
+    window.canvasAppGoOn = () => {
+      delete canvas.dataset.held;
+      delete window.canvasAppGoOn;
+      done();
+    };
+  });
+}
+
 // A small pill near the top of the canvas: a soft dot that breathes and two
 // quiet words. It sits on the page, not in the canvas, so the canvas holds
 // only the app's frame.
@@ -671,6 +694,7 @@ async function main(show) {
   canvas.dataset.phase = 'warming';
   const hideWarming = warming.hide;
   await nextPaint();
+  await holdAt(canvas, 'before-warm-up');
   let warm;
   try {
     warm = await warmUp(game, width, height);
@@ -680,6 +704,7 @@ async function main(show) {
     return;
   }
   timer?.loaded(loadMs, warm);
+  await holdAt(canvas, 'after-warm-up');
   hideWarming();
   canvas.dataset.phase = 'riding';
   last = performance.now();

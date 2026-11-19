@@ -38,15 +38,17 @@
 --     `opt speed`
 --   the live page, loaded from the dev server in headless Chromium
 --     (tools/web_shots.mjs): no console error; the first frame shown still
---     under the warming-up indicator and unchanged until the ride starts; the
+--     under the warming-up indicator and unchanged until the ride starts,
+--     seen for certain at both edges of the warm-up, since the page is loaded
+--     with `?hold=1` and waits at each edge until the check has looked; the
 --     ride's first drawn frame the same as `?step=N`'s for the steps it shows,
 --     so the warm-up left the model alone; Steve's skin (web.roc) under the
 --     canvas: the keyboard help made from the app's controls, as its line
 --     says, and the links Home and Code with their addresses, each opening in
 --     a new tab, each line held exactly; and
 --     two screenshots 1.5 s apart with no input differ, so the page animates.
---     The shots come 1.3 s after the first frame, past the warm-up (at most
---     about 0.4 s) and the indicator's fade, and web_shots.mjs fails a shot
+--     The shots come 1.3 s after the ride starts, past the indicator's fade
+--     (0.5 s), and web_shots.mjs fails a shot
 --     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 15

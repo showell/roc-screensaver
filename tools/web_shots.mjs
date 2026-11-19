@@ -1,14 +1,16 @@
 // web_shots.mjs loads a built screensaver page in headless Chromium and saves
-// screenshots of it at a few times after its first painted frame, so a run can
-// be seen playing. It exits non-zero on a console error, an exception, a
-// failed request or a canvas that never paints. A moving page must also start
-// still on its first frame under the runner's warming-up indicator, keep that
-// frame until its ride starts, and have dropped the indicator by every shot.
+// screenshots of it at a few times after its ride starts, so a run can be
+// seen playing. It exits non-zero on a console error, an exception, a failed
+// request or a canvas that never paints. A moving page must also start still
+// on its first frame under the runner's warming-up indicator, keep that frame
+// until its ride starts, and have dropped the indicator by every shot. It is
+// loaded with `?hold=1`, so its start waits at each edge of the warm-up until
+// this has looked there, and a short warm-up is never missed.
 // It prints what the page's skin put under the canvas, the keyboard help and
 // the links, for the gate to hold to the skin.
 // The runner's own console lines (`?timing=1`) are printed as they come.
 //
-//   node tools/web_shots.mjs <page url> <shots folder> <ms after first paint>...
+//   node tools/web_shots.mjs <page url> <shots folder> <ms after the ride starts>...
 //   node tools/web_shots.mjs <page url> <shots folder> step=<N>...
 //
 // A `step=N` shot loads the page at `?step=N`, which stops on the frame after
@@ -102,42 +104,70 @@ const CANVAS_HASH = `window.__canvasHash = () => {
   return hash;
 }; window.__canvasHash()`;
 
-// Watches the start of a moving page, from its first painted frame: the
-// warming-up indicator must be over it, and the canvas must hold the first
-// frame (`?step=0`'s, whose hash is `first`), sampled every 15 ms, until the
-// page says the ride has started. The first frame is the still page's rather
-// than this one's, since by the first sample the warm-up has been running for
-// a while and could already have changed the canvas. Then it waits for the
-// ride's first drawn frame and answers its hash with the steps it shows
-// (`data-steps`), read in one turn of the page, so the two agree.
+// Watches the start of a moving page loaded with `?hold=1`, which waits at
+// each edge of its warm-up, naming the edge in `data-held`, until this lets it
+// go on. So the check sees both edges for certain, however short the warm-up:
+// at each, the warming-up indicator must be over the canvas, the phase must
+// be `warming`, and the canvas must hold the first frame (`?step=0`'s, whose
+// hash is `first`). Between them it samples the canvas every 15 ms as well.
+// Then it waits for the ride's first drawn frame and answers its hash with
+// the steps it shows (`data-steps`), read in one turn of the page, so the two
+// agree.
 const warmUpWatch = (first) => `(async () => {
   const canvas = document.querySelector('canvas');
   const sample = window.__canvasHash;
-  const indicator = document.getElementById('warming-indicator') !== null;
-  const phaseAtFirst = canvas.dataset.phase ?? 'none';
+  const pause = (ms) => new Promise((later) => setTimeout(later, ms));
   const started = performance.now();
+  const heldAt = async (edge) => {
+    while (canvas.dataset.held !== edge) {
+      if (performance.now() - started > 8000) return null;
+      await pause(4);
+    }
+    const hash = sample();
+    return {
+      indicator: document.getElementById('warming-indicator') !== null,
+      phase: canvas.dataset.phase ?? 'none',
+      hash,
+      same: hash === ${first},
+    };
+  };
+  const before = await heldAt('before-warm-up');
+  if (before === null) return { unheld: 'before the warm-up' };
+  const warmStart = performance.now();
+  window.canvasAppGoOn();
   let samples = 0;
   let changed = 0;
   const seen = [];
-  while (canvas.dataset.phase === 'warming' && performance.now() - started < 5000) {
+  while (canvas.dataset.held !== 'after-warm-up' && performance.now() - started < 8000) {
     const now = sample();
     if (now !== ${first}) { changed++; seen.push(now); }
     samples++;
-    await new Promise((later) => setTimeout(later, 15));
+    await pause(15);
   }
-  const ms = performance.now() - started;
+  const after = await heldAt('after-warm-up');
+  if (after === null) return { unheld: 'after the warm-up' };
+  const ms = performance.now() - warmStart;
+  window.canvasAppGoOn();
   let ride = null;
   while (ride === null && performance.now() - started < 8000) {
     if (canvas.dataset.steps !== undefined) ride = { hash: sample(), steps: Number(canvas.dataset.steps) };
-    else await new Promise((later) => setTimeout(later, 4));
+    else await pause(4);
   }
-  return { indicator, phaseAtFirst, samples, changed, seen, ride, phase: canvas.dataset.phase ?? 'none', ms };
+  return { before, after, samples, changed, seen, ride, phase: canvas.dataset.phase ?? 'none', ms };
 })()`;
 
 // The page's address with `?step=N` added to whatever query it has (`?timing=1`).
 function atStep(step) {
   const address = new URL(url);
   address.searchParams.set("step", String(step));
+  return address.href;
+}
+
+// The page's address with `?hold=1` added, so its start waits at each edge of
+// the warm-up for `warmUpWatch` (canvas_app_runner.js's `holdAt`).
+function held(page) {
+  const address = new URL(page);
+  address.searchParams.set("hold", "1");
   return address.href;
 }
 
@@ -209,7 +239,7 @@ try {
     else firstFrame = await evaluate(page, CANVAS_HASH);
   }
   const loaded = new Promise((done) => link.on("Page.loadEventFired", done));
-  await page.send("Page.navigate", { url }, page.session);
+  await page.send("Page.navigate", { url: held(url) }, page.session);
   await loaded;
   const first = moving ? await evaluate(page, FIRST_PAINT) : { skipped: true };
   if (first.skipped) {
@@ -219,24 +249,31 @@ try {
   } else {
     const navStart = await evaluate(page, "performance.timeOrigin + 0");
     console.log(`first painted frame ${Math.round(first.painted)} ms after navigation, ${first.colours} colours sampled (origin ${Math.round(navStart)})`);
-    const shotStart = Date.now();
-    const atFirstPaint = await evaluate(page, CANVAS_HASH);
+    await evaluate(page, CANVAS_HASH);
     const warm = await evaluate(page, warmUpWatch(firstFrame));
-    if (atFirstPaint !== firstFrame) { warm.changed++; }
-    warm.samples++;
-    console.log(
-      `warm-up: indicator ${warm.indicator ? "over" : "missing from"} the first frame, phase ${warm.phaseAtFirst}; ` +
-        `the canvas changed in ${warm.changed} of ${warm.samples} samples; phase ${warm.phase} after ${Math.round(warm.ms)} ms`,
-    );
-    if (!warm.indicator || warm.phaseAtFirst !== "warming") failures.push("the first frame was not shown warming up under its indicator");
+    const shotStart = Date.now();
+    if (warm.unheld !== undefined) {
+      failures.push(`the page never held its start ${warm.unheld}, as ?hold=1 asks`);
+    } else {
+      const edge = (at) => `${at.indicator ? "under" : "without"} the indicator, phase ${at.phase}, ${at.same ? "the first frame" : "not the first frame"}`;
+      console.log(
+        `warm-up: held before it ${edge(warm.before)} and after it ${edge(warm.after)}; ` +
+          `the canvas changed in ${warm.changed} of ${warm.samples} samples between; phase ${warm.phase} after ${Math.round(warm.ms)} ms`,
+      );
+      const shownWarming = (at) => at.indicator && at.phase === "warming";
+      if (!shownWarming(warm.before) || !shownWarming(warm.after)) failures.push("the first frame was not shown warming up under its indicator");
+      const changed = warm.changed + (warm.before.same ? 0 : 1) + (warm.after.same ? 0 : 1);
+      if (changed > 0) {
+        failures.push(`the canvas changed during the warm-up, in ${changed} of ${warm.samples + 2} looks`);
+        console.log(`warm-up: first frame ${firstFrame}, before ${warm.before.hash}, after ${warm.after.hash}, seen ${warm.seen.join(" ")}`);
+      }
+      if (warm.phase !== "riding") failures.push(`the ride never started: phase ${warm.phase} after ${Math.round(warm.ms)} ms`);
+      if (warm.ride === null) failures.push("the ride never drew a frame");
+      else rideFrame = warm.ride;
+    }
     const pillEarly = await evaluate(page, "window.__pillBeforeCanvas === true");
     console.log(`warm-up: indicator ${pillEarly ? "up" : "not up"} before the canvas existed`);
     if (!pillEarly) failures.push("the warming-up indicator was not up while the wasm loaded");
-    if (warm.changed > 0) failures.push(`the canvas changed during the warm-up, in ${warm.changed} of ${warm.samples} samples`);
-    if (warm.phase !== "riding") failures.push(`the ride never started: phase ${warm.phase} after ${Math.round(warm.ms)} ms`);
-    if (warm.changed > 0) console.log(`warm-up: first frame ${firstFrame}, seen ${warm.seen.join(" ")}`);
-    if (warm.ride === null) failures.push("the ride never drew a frame");
-    else rideFrame = warm.ride;
     // The gate holds these lines to the skin the page was built with.
     const skin = await evaluate(page, SKIN_SEEN);
     console.log(`skin help: ${skin.help === null ? "none" : skin.help}`);
@@ -250,7 +287,7 @@ try {
       const { data } = await page.send("Page.captureScreenshot", { format: "png" }, page.session);
       const path = join(shots, `at_${String(at).padStart(5, "0")}ms.png`);
       writeFileSync(path, Buffer.from(data, "base64"));
-      console.log(`shot ${path} at ${Date.now() - shotStart} ms after first paint`);
+      console.log(`shot ${path} at ${Date.now() - shotStart} ms after the ride started`);
     }
   }
   // The ride's first frame must be the still page's at the same step, which it
