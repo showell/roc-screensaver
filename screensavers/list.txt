@@ -8,6 +8,6 @@
 # its web.roc; the step of the native frame that is its landing-page picture,
 # shot.png, or `-` for none; and, the rest of the line, the keyboard help its
 # page shows under the canvas, made from the app's controls.
-lanterns a153a4366764142f 233 227 - Space pauses and resumes · R restarts at dawn · → skips ahead a crossing
-bubbles fedd5de9d0e9bd86 124 118 - Space pauses and resumes · R restarts
-tides 185bc865267cea31 136 130 1500 Space pauses and resumes · R restarts at dawn
+lanterns a153a4366764142f 223 217 - Space pauses and resumes · R restarts at dawn · → skips ahead a crossing
+bubbles fedd5de9d0e9bd86 114 85 - Space pauses and resumes · R restarts
+tides 185bc865267cea31 126 105 1500 Space pauses and resumes · R restarts at dawn

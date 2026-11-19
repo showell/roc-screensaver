@@ -8,9 +8,12 @@
 --
 --   roc fmt --check over platform/, native/, examples/, screensavers/, lib/ and web/
 --   roc check of each root, held to zero errors and zero warnings by the
---     report's marks, since a warning alone still exits 2: the basic and keys
---     examples, and each screensaver both ways, natively (main.roc) and as a
---     page (web.roc)
+--     report's marks, since a warning alone still exits 2: lib's package
+--     (lib/main.roc, which reaches every module it names, those no
+--     screensaver imports among them), the basic and keys examples, and each
+--     screensaver both ways, natively (main.roc) and as a page (web.roc)
+--   roc test of lib/main.roc, held to exactly `lib_tests_expected` expects:
+--     every lib module's, whether or not a screensaver reaches it
 --   roc test of each screensaver, held to exactly the expects its line names,
 --     native/'s (the adapter's and NativeApp's keys) and lib's among them, and
 --     of its page root (web.roc), held to its line's second count, lib's Skin
@@ -47,6 +50,7 @@
 --     with the indicator still in it, so the two cannot differ by it alone
 
 const tests_expected = 15
+const lib_tests_expected = 119
 -- The links Steve's skin puts under every screensaver's canvas, as
 -- tools/web_shots.mjs reads them off the page.
 const skin_links_expected = "skin links: Home https://roc.lynrummy.com in a new tab, Code https://github.com/showell/roc-screensaver in a new tab"
@@ -170,7 +174,7 @@ local formatted = 0
 for d in roc_dirs do formatted = formatted + #glob(d .. "/**/*.roc") end
 line("roc fmt --check", r.code == 0, formatted .. " files, " .. lines(trim(r.out))[1], r.ms)
 
-local roots = {"examples/basic/main.roc", "examples/keys/main.roc"}
+local roots = {"lib/main.roc", "examples/basic/main.roc", "examples/keys/main.roc"}
 for saver in savers do
   push(roots, "screensavers/" .. saver.name .. "/main.roc")
   push(roots, "screensavers/" .. saver.name .. "/web.roc")
@@ -183,6 +187,7 @@ for root in roots do
   line("roc check " .. root, errors == 0 and warnings == 0, errors .. " errors, " .. warnings .. " warnings", r.ms)
 end
 
+roc_test_line("lib/main.roc", lib_tests_expected)
 for saver in savers do
   roc_test_line("screensavers/" .. saver.name .. "/main.roc", saver.roc_tests)
   roc_test_line("screensavers/" .. saver.name .. "/web.roc", saver.web_tests)

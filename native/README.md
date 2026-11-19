@@ -16,7 +16,7 @@ same colours:
 - **Flat**: opaque, `Solid`; translucent, a `Linear` whose two stops are that
   colour; unseen, nothing. On a disc, raster.zig's own disc with its alpha.
 - **Span**: `Round`, when the span covers the region's own width and both
-  colours are opaque, as `Brush.width_shade` makes it. Any other span is cut
+  colours are opaque, as `WidthShading.width_shade` makes it. Any other span is cut
   into two halves at its middle, each a `Linear` from the edge colour to the
   middle.
 - **Radial**: `Radial` from the centre. With an inner radius, it becomes an

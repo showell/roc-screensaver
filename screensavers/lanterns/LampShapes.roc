@@ -9,6 +9,7 @@ import lib.Pixels
 import lib.Point
 import lib.RgbColor
 import lib.Shapes
+import lib.WidthShading
 
 LampShapes :: [].{
 
@@ -39,7 +40,7 @@ LampShapes :: [].{
 			top_left: { x: post_left, y: Pixels.of(globe_y) },
 			width: post_right.minus(post_left),
 			height: Pixels.of(upright.foot.y.to_f64() - globe_y),
-			fill: Brush.width_shade({ min_x: post_left, max_x: post_right }, { color: iron_color, strength: Fraction.whole }),
+			fill: WidthShading.width_shade({ min_x: post_left, max_x: post_right }, { color: iron_color, strength: Fraction.whole }),
 		})
 		cap_half = globe_radius * 1.25
 		cap = Quad({

@@ -14,6 +14,7 @@ import lib.Pixels
 import lib.Point
 import lib.RgbColor
 import lib.Shapes
+import lib.WidthShading
 
 FrameOfShapes :: [].{
 
@@ -71,7 +72,7 @@ rgb_of = |c| byte_of(c.r) * 65536 + byte_of(c.g) * 256 + byte_of(c.b)
 argb_of : Brush.Rgba -> Frame.Argb
 argb_of = |c| byte_of(c.a * 255.0) * 16777216 + rgb_of(c)
 
-## A gradient's colour where its stops put it, as Brush.shade gives it.
+## A gradient's colour where its stops put it, as BrushShade.shade gives it.
 color_at_stop : Brush.TwoStops, F64 -> Brush.Rgba
 color_at_stop = |stops, t|
 	if t <= stops.start_offset {
@@ -205,7 +206,7 @@ region_shapes = |corners, fill| {
 
 ## A span's brush across the region round `points`. raster.zig's round fill
 ## is a span from the region's own left edge to its right, made from one
-## colour and a strength, so a span that Brush.width_shade made over the
+## colour and a strength, so a span that WidthShading.width_shade made over the
 ## region's own width is painted as one. Any other span is painted in two
 ## halves, each a linear gradient from the edge colour to the middle one.
 span_shapes : List(Frame.Point),
@@ -388,7 +389,7 @@ expect region_shapes(square, Flat({ ..white, a: 0.0 })) == []
 # strength width_shade made it from, each channel within a level: 0x804020
 # comes back as 0x804120, since width_shade rounded the green it shaded.
 expect {
-	span = Brush.width_shade({ min_x: Pixels.of(0.0), max_x: Pixels.of(10.0) }, { color: RgbColor.of(0x804020), strength: Fraction.of(0.8) })
+	span = WidthShading.width_shade({ min_x: Pixels.of(0.0), max_x: Pixels.of(10.0) }, { color: RgbColor.of(0x804020), strength: Fraction.of(0.8) })
 	match region_shapes(square, span) {
 		[Polygon({ fill: Round(r), .. })] => r.color == 0x804120 and (r.strength - 0.8).abs() < 0.01
 		_ => Bool.False
@@ -397,7 +398,7 @@ expect {
 
 # A span over another width is two halves, each a linear gradient.
 expect {
-	span = Brush.width_shade({ min_x: Pixels.of(0.0), max_x: Pixels.of(20.0) }, { color: RgbColor.of(0x804020), strength: Fraction.of(0.8) })
+	span = WidthShading.width_shade({ min_x: Pixels.of(0.0), max_x: Pixels.of(20.0) }, { color: RgbColor.of(0x804020), strength: Fraction.of(0.8) })
 	match region_shapes(square, span) {
 		[Polygon({ fill: Linear(_), .. }), Polygon({ fill: Linear(_), .. })] => Bool.True
 		_ => Bool.False

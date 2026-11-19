@@ -37,6 +37,7 @@ import lib.Pixels
 import lib.Point
 import lib.RgbColor
 import lib.Shapes
+import lib.WidthShading
 
 LanternsApp :: [].{
 	Model : { scene : LanternsApp.Scene, play : LanternsApp.Play }
@@ -369,8 +370,8 @@ backdrop_shapes = |camera, light| {
 		}),
 	})
 	# The far range is drawn over the sun, so the sun goes down behind its ridge.
-	far = Polygon({ corners: Sunrise.far_range, fill: Brush.corners_shade(Sunrise.far_range, { color: light.far_range, strength: Fraction.of(0.6) }) })
-	near_fill = Brush.corners_shade(near_hills, { color: light.hills, strength: Fraction.of(0.8) })
+	far = Polygon({ corners: Sunrise.far_range, fill: WidthShading.corners_shade(Sunrise.far_range, { color: light.far_range, strength: Fraction.of(0.6) }) })
+	near_fill = WidthShading.corners_shade(near_hills, { color: light.hills, strength: Fraction.of(0.8) })
 	hills = Polygon({ corners: near_hills, fill: near_fill })
 	grass = Shapes.rectangle({
 		top_left: Point.at(0.0, RoadCamera.horizon_y),

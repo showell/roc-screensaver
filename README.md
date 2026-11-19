@@ -82,7 +82,8 @@ A screensaver is a folder in `screensavers/` with two roots over one app:
   Windows workflow each take every screensaver listed there, so a new one
   is one more line (the file's header says what each field is).
 
-The app itself uses `lib/`: `Shapes` and `Brush` to draw, `Font` for
+The app itself uses `lib/`: `Shapes` and `Brush` to draw (and `WidthShading`
+for a fill shaded round across its width), `Font` for
 lettering the native painter can draw, `Input` and `Keys` for the keyboard,
 and `CanvasApp` to put it together. Copy tides' `main.roc`, `web.roc` and
 `page.html` to start. `zig build -Dapp=<folder>/main.roc` builds another app

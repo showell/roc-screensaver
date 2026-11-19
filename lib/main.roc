@@ -10,8 +10,10 @@ package
 	[
 		ArgbColor,
 		Brush,
+		BrushShade,
 		CanvasApp,
 		ColorShade,
+		CurvedShapes,
 		Font,
 		Fraction,
 		Input,
@@ -23,6 +25,8 @@ package
 		RgbColor,
 		Shapes,
 		Skin,
+		Squash,
 		WasmApp,
+		WidthShading,
 	]
 	{}
