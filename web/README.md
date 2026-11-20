@@ -6,6 +6,29 @@ clock and the keyboard, and dresses the page in the app's skin; and
 `shapes_canvas.js`, which paints a frame's shapes on a canvas. The runner and
 the painter began as roc-apps' copies and evolve here on their own.
 
+`lanterns_platform/` is Lanterns' own platform, for its code pane: the
+canvas apps' platform with one function more, `code`, which answers after each
+step `ModuleSource(html)`, a module's code coloured as HTML, or
+`KeepCurrentCode`. Its host is the shared host (as the `canvas_host` module)
+with one export more, `computeCode`, and `code_pane.js` lays the pane beside
+the canvas and scrolls it. A web root names its platform, and the page's build
+glues against that one and serves its scripts. The runner knows nothing of the
+pane but an optional `pane` on `window.SHOW`, which it tells of each step and
+shows the canvas; Tides and Bubbles set none.
+
+## The code pane
+
+Lanterns' page is two panes side by side on a window at least 1100 CSS pixels
+wide: the scene on the left, at its own aspect ratio (at most 88% of the
+window's height, and as wide as the pane leaves room for), and the code on the
+right, `clamp(360px, 32vw, 600px)` wide and as tall as the scene. Below
+1100 pixels the pane is hidden and the canvas lays out as it always did.
+
+A new module starts at its top, holds still for 1.5 s, then scrolls down at
+24 pixels a second until its end is in view. The Roc decides which module and
+when (`screensavers/lanterns/CodeCues.roc`, a cue a line); the scroll is the
+page's.
+
 ## The start
 
 The "warming up" pill goes up the moment the page opens and stays while the

@@ -35,7 +35,8 @@ Each one has its own folder in `screensavers/` and its own README.
   launch. The Roc bird hops from lamp to lamp down an endless road as the sun
   comes up, a small plane tows a "Welcome to Roc!" banner across the sky,
   and five jets fly over before the cycle starts again. Space pauses, R
-  restarts at dawn, and → skips ahead a crossing.
+  restarts at dawn, and → skips ahead a crossing. On a wide screen the page
+  shows, beside the scene, the Roc module behind each moment, coloured.
   On the web: https://roc.lynrummy.com/welcome-to-roc/
 - **Tides** (`screensavers/tides/`): six bands of water roll under a sky
   that goes from dawn to day, dusk and night every two minutes. Space
@@ -98,7 +99,9 @@ The native painter draws every shape except `Text`, `Image` and
 
 You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
 `roc-version`, at `~/tools/roc-<pin>/roc` (or name it with `-Droc=<path>`).
-`zig build` refuses any other Roc.
+`zig build` refuses any other Roc. Lanterns' page also needs
+[roc-syntax-color](https://github.com/showell/roc-syntax-color) checked out
+beside this repo, at the same pin; the native builds don't.
 
     zig build                     # lanterns' archive, then the PNG harness
     zig build png -- out/x        # its first 8 frames, out/x/frame-000.png ...
@@ -109,6 +112,7 @@ You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
     shale tools/web_build.shale   # every listed screensaver's page and shot.png, into the dev channel (saver=NAME: one; opt=dev: quick; dest=NAME: another folder)
     shale tools/verify.shale      # the gate: every check above for every listed screensaver, and the live pages, a line each
     shale tools/glue.shale        # after a change to platform/: roc glue's snapshot again
+    shale tools/bundle_lanterns_sources.shale   # after a change to a Lanterns module: the code pane's sources again
 
 On GitHub, `gh workflow run windows.yml` builds each screensaver on a Windows
 runner, runs it headless (its last frame's checksum must match the PNG
@@ -139,16 +143,18 @@ windows-screensaver` fetches it.
   PNG harness.
 - `native/`: runs a `CanvasApp` on the native platform, with the adapter
   from shapes to frames (`native/README.md`).
-- `web/`: the wasm platform and its host, and the page's runner and painter
-  (`web/README.md`).
+- `web/`: the wasm platform and its host, Lanterns' platform beside it
+  (`web/lanterns_platform/`, the code pane's), and the page's runner and
+  painter (`web/README.md`).
 - `lib/`: the vocabulary apps are written in, copied from roc-apps and
   allowed to drift, plus `Skin`.
 - `screensavers/`: the screensavers, a folder each, and `list.txt`, which
   names them.
 - `examples/`: the host tests' fixtures: `basic/` draws every kind of
   `Frame` shape, and `keys/` counts the keys it is given.
-- `tools/`: the gate, the page's build, the glue regenerator, and
-  `web_shots.mjs`, which checks a live page in headless Chromium. The
+- `tools/`: the gate, the page's build, the glue regenerator, the code
+  pane's bundler and its staleness check, and `web_shots.mjs`, which checks
+  a live page in headless Chromium. The
   scripts read `screensavers/list.txt` through `.shale/prelude.shale`'s
   `screensavers_listed`.
 
