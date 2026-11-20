@@ -10,7 +10,10 @@
 -- It builds the wasm host (web/platform/host.zig, against the roc checkout's
 -- builtins, with Zig 0.16 as roc-apps does), then the app's wasm with the
 -- pinned Roc, then roc_glue.js from the platform's type table with the same
--- compiler. The wasm is `--opt=speed` unless `opt=dev` says otherwise: it takes
+-- compiler. The platform is the one the screensaver's web.roc names: the
+-- canvas apps' (web/platform/), or Lanterns' (web/lanterns_platform/, which
+-- adds the code pane), and the page gets that platform's own scripts beside
+-- the runner's. The wasm is `--opt=speed` unless `opt=dev` says otherwise: it takes
 -- some seconds longer to build and is about a third the size, and its frames
 -- are the ones the page is meant to be seen with. BUILT says which was built.
 -- A screensaver whose list.txt line names a shot step also gets shot.png, the
@@ -79,13 +82,15 @@ function page_build(roc, page)
   end
   print(name .. " wasm (opt " .. opt .. "): " .. wasm.ms .. " ms, " .. stat(wasm_path).size .. " bytes")
 
-  local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), "web/platform/main.roc"},
+  local platform = web_platform_of(name)
+  local glue = must(run({roc, "glue", "web/glue/JsGlue.roc", real(staging), platform.main},
     {timeout_ms = 120000, tail = 30}))
   if not exists(staging .. "/roc_glue.js") then print(glue.out) fail("web_build: glue wrote no roc_glue.js") end
   print(name .. " glue: " .. glue.ms .. " ms")
 
   copy("web/shapes_canvas.js", staging .. "/shapes_canvas.js")
   copy("web/canvas_app_runner.js", staging .. "/canvas_app_runner.js")
+  for script in glob(platform.dir .. "/*.js") do copy(script, staging .. "/" .. basename(script)) end
   copy("screensavers/" .. name .. "/page.html", staging .. "/index.html")
   local built = trim(must(run({roc, "version"}, {timeout_ms = 10000, tail = 2})).out) .. "\nopt " .. opt .. "\n"
   if has_key(page, "shot_step") then

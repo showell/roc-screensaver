@@ -6,6 +6,9 @@
 -- budget: steps=40000000 arena_bytes=400000000
 --   shale tools/verify.shale branch=skins   # a branch's pages, built and checked in their own folders (lanterns-skins, ...)
 --
+--   screensavers/lanterns/LanternsSources.roc, the code pane's sources, the same
+--     as tools/bundle_lanterns_sources.shale makes from the Lanterns modules
+--     now, so the page never shows code the modules no longer hold
 --   roc fmt --check over platform/, native/, examples/, screensavers/, lib/ and web/
 --   roc check of each root, held to zero errors and zero warnings by the
 --     report's marks, since a warning alone still exits 2: lib's package
@@ -130,6 +133,7 @@ function page_lines(saver, folder)
   local r = run({"shale", "tools/web_build.shale", "saver=" .. saver.name, "dest=" .. folder}, {timeout_ms = 300000, tail = 20})
   local served = "build:roc-apps/next/" .. folder
   local files = {"index.html", wasm, "roc_glue.js", "shapes_canvas.js", "canvas_app_runner.js"}
+  for script in glob(web_platform_of(saver.name).dir .. "/*.js") do push(files, basename(script)) end
   if has_key(saver, "shot_step") then push(files, "shot.png") end
   local pieces = 0
   for f in files do
@@ -167,6 +171,14 @@ function page_lines(saver, folder)
 end
 
 const savers = screensavers_listed()
+
+-- The code pane's sources, as the Lanterns modules make them now.
+local sources = run({"shale", "tools/check_lanterns_sources.shale"}, {timeout_ms = 60000, tail = 10})
+local sources_said = re_find(sources.out, "check_lanterns_sources: [^\n]*")
+if sources.code ~= 0 or sources_said == nil then print(sources.out) end
+local sources_detail = "stale: run shale tools/bundle_lanterns_sources.shale"
+if sources.code == 0 and sources_said ~= nil then sources_detail = sources_said.text end
+line("lanterns sources", sources.code == 0 and sources_said ~= nil, sources_detail, sources.ms)
 
 const roc_dirs = {"platform", "native", "examples", "screensavers", "lib", "web"}
 local fmt_argv = {roc, "fmt", "--check"}

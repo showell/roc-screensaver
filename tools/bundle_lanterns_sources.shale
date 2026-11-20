@@ -1,0 +1,23 @@
+-- Writes screensavers/lanterns/LanternsSources.roc, the Lanterns modules'
+-- code with its comments taken out, which the page's code pane shows. Run it
+-- from the repo's root after any change to a Lanterns module:
+--   shale tools/bundle_lanterns_sources.shale
+-- The gate (tools/verify.shale) fails while the file is stale.
+-- tools/lanterns_sources.shale says how a comment is taken out.
+
+use("./lanterns_sources.shale")
+
+if not exists("platform/main.roc") then
+  fail("bundle_lanterns_sources: run it from roc-screensaver's root (no platform/main.roc here)")
+end
+
+local text = lanterns_sources_module()
+if exists(LANTERNS_SOURCES) and read(LANTERNS_SOURCES) == text then
+  print("bundle_lanterns_sources: " .. LANTERNS_SOURCES .. " unchanged")
+elseif exists(LANTERNS_SOURCES) then
+  replace(LANTERNS_SOURCES, text)
+  print("bundle_lanterns_sources: " .. LANTERNS_SOURCES .. " written, " .. #lanterns_module_files() .. " modules, " .. #text .. " bytes")
+else
+  create(LANTERNS_SOURCES, text)
+  print("bundle_lanterns_sources: " .. LANTERNS_SOURCES .. " written, " .. #lanterns_module_files() .. " modules, " .. #text .. " bytes")
+end

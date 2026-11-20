@@ -5,6 +5,10 @@
 // test/provided-callable-host); options.zig stands in for roc's generated
 // build options. The object lands where the platform header expects it.
 //
+// It builds a second object too, the Lanterns page's host
+// (lanterns_platform/host.zig), which is the same host as a module with one
+// export more, for lanterns_platform/main.roc.
+//
 // This file is copied from roc-apps (`canvas_apps/web/build.zig`) on 2026-11-15, and it
 // is allowed to drift from it.
 const std = @import("std");
@@ -46,25 +50,35 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const host = b.addObject(.{
-        .name = "host",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("platform/host.zig"),
-            .target = target,
-            .optimize = optimize,
-            .pic = true,
-            .imports = &.{
-                .{ .name = "builtins", .module = builtins },
-                .{ .name = "host_alloc", .module = host_alloc },
-            },
-        }),
+    const canvas_host = b.createModule(.{
+        .root_source_file = b.path("platform/host.zig"),
+        .target = target,
+        .optimize = optimize,
+        .pic = true,
+        .imports = &.{
+            .{ .name = "builtins", .module = builtins },
+            .{ .name = "host_alloc", .module = host_alloc },
+        },
     });
+    const lanterns_host = b.createModule(.{
+        .root_source_file = b.path("lanterns_platform/host.zig"),
+        .target = target,
+        .optimize = optimize,
+        .pic = true,
+        .imports = &.{.{ .name = "canvas_host", .module = canvas_host }},
+    });
+
+    const copy = b.addUpdateSourceFiles();
+    copy.addCopyFileToSource(hostObject(b, "host", canvas_host).getEmittedBin(), "platform/targets/wasm32/host.wasm");
+    copy.addCopyFileToSource(hostObject(b, "lanterns_host", lanterns_host).getEmittedBin(), "lanterns_platform/targets/wasm32/host.wasm");
+    b.getInstallStep().dependOn(&copy.step);
+}
+
+fn hostObject(b: *std.Build, name: []const u8, root: *std.Build.Module) *std.Build.Step.Compile {
+    const host = b.addObject(.{ .name = name, .root_module = root });
     host.use_llvm = true;
     host.link_function_sections = true;
     host.link_data_sections = true;
     host.bundle_compiler_rt = true;
-
-    const copy = b.addUpdateSourceFiles();
-    copy.addCopyFileToSource(host.getEmittedBin(), "platform/targets/wasm32/host.wasm");
-    b.getInstallStep().dependOn(&copy.step);
+    return host;
 }

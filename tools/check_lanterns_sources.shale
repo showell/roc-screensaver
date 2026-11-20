@@ -1,0 +1,17 @@
+-- Checks that screensavers/lanterns/LanternsSources.roc, the code pane's
+-- sources, is what tools/bundle_lanterns_sources.shale makes from the Lanterns
+-- modules now, and stops when it is stale. The gate (tools/verify.shale) runs
+-- it, so the page never shows code the modules no longer hold. A change to a
+-- module's comments alone leaves it fresh, since the pane shows none.
+--   shale tools/check_lanterns_sources.shale
+
+use("./lanterns_sources.shale")
+
+if not exists("platform/main.roc") then
+  fail("check_lanterns_sources: run it from roc-screensaver's root (no platform/main.roc here)")
+end
+
+if not exists(LANTERNS_SOURCES) or read(LANTERNS_SOURCES) ~= lanterns_sources_module() then
+  fail("check_lanterns_sources: " .. LANTERNS_SOURCES .. " is stale: run shale tools/bundle_lanterns_sources.shale")
+end
+print("check_lanterns_sources: " .. LANTERNS_SOURCES .. " holds the " .. #lanterns_module_files() .. " Lanterns modules as they are now")

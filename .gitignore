@@ -3,4 +3,5 @@ zig-out/
 out/
 tools/web_shots/
 web/platform/targets/
+web/lanterns_platform/targets/
 web/zig-out/

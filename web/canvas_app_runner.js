@@ -36,6 +36,11 @@
 // the app's declared controls so it cannot drift from them, and the links. The
 // help and the links go in one quiet line under the canvas (`dressCanvas`).
 //
+// A page may set `pane`, a companion that hears the app after its first model
+// and after every step, and is shown the canvas once it is on the page:
+// `{ heard(game), shown(canvas) }`. Lanterns' code pane is one
+// (web/lanterns_platform/code_pane.js). A page without one is as it was.
+//
 // This file is copied from roc-apps (`canvas_apps/web/canvas_app_runner.js`) on 2026-11-15, and it
 // is allowed to drift from it.
 
@@ -540,6 +545,8 @@ async function main(show) {
   const stepMs = 1000 / game.fps();
   const dressing = game.dressing();
   if (!dressing.skin.show_loading_indicator) warming.hide();
+  const pane = show.pane ?? null;
+  pane?.heard(game);
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -574,6 +581,7 @@ async function main(show) {
       y: mouse.y,
       wheel: mouse.wheel,
     });
+    pane?.heard(game);
     const rung = game.sounds();
     if (rung) {
       ringing.at = now;
@@ -663,6 +671,7 @@ async function main(show) {
 
   for (let press = pressesToOpen(show); press > 0; press--) {
     game.advance({ key_held: 0, key_struck: KEY_BIT.ArrowRight, button_held: 0, button_struck: 0, x: 0, y: 0, wheel: 0 });
+    pane?.heard(game);
   }
 
   const loadMs = performance.now() - loadStart;
@@ -673,6 +682,7 @@ async function main(show) {
   }
 
   document.body.appendChild(canvas);
+  pane?.shown(canvas);
   warming.onCanvas(canvas);
   dressCanvas(dressing);
   try {

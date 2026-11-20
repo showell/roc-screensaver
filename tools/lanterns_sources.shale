@@ -1,0 +1,141 @@
+-- A library: the Lanterns modules' code with its comments taken out, as the
+-- Roc module the page's code pane reads (screensavers/lanterns/LanternsSources.roc).
+-- tools/bundle_lanterns_sources.shale writes that file from
+-- `lanterns_sources_module()`, and the gate (tools/verify.shale) fails when
+-- the file differs from it, so the pane never shows code the modules no
+-- longer hold.
+--
+-- A comment is Roc's: a `#` outside a string or a character, to the end of
+-- its line. Roc's strings and characters end at their line, and so does an
+-- interpolation, so each line is read alone. A line that is only a comment
+-- goes; a line with code before its comment keeps the code, its trailing
+-- spaces trimmed. The code's layout is otherwise kept: its indents, and one
+-- blank line wherever it had one or more. A multi-line string (`\\`) stops
+-- the run, as no module has one and this does not read one.
+
+const LANTERNS_DIR = "screensavers/lanterns"
+const LANTERNS_SOURCES = "screensavers/lanterns/LanternsSources.roc"
+const LANTERNS_SOURCES_NAME = "LanternsSources.roc"
+
+-- Where `line`'s comment starts, a byte, or 0 when it has none. `where`
+-- names the line in a stop.
+function comment_start(line, where)
+  if find(line, "#") == nil then return 0 end
+  local n = #line
+  local i = 1
+  -- Inside a string, a character, or code; a string's open interpolations
+  -- are a stack of the brace depths they opened at.
+  local inside = "code"
+  local braces = 0
+  local opened = {}
+  while i <= n do
+    local c = sub(line, i, i)
+    if inside == "char" then
+      if c == "\\" then
+        i = i + 1
+      elseif c == "'" then
+        inside = "code"
+      end
+    elseif inside == "string" then
+      if c == "\\" then
+        i = i + 1
+      elseif c == "\"" then
+        inside = "code"
+      elseif c == "$" and sub(line, i + 1, i + 1) == "{" then
+        push(opened, braces)
+        braces = 0
+        inside = "code"
+        i = i + 1
+      end
+    else
+      if c == "#" then
+        return i
+      elseif c == "\"" then
+        inside = "string"
+      elseif c == "'" then
+        inside = "char"
+      elseif c == "\\" and sub(line, i + 1, i + 1) == "\\" then
+        fail("lanterns_sources: " .. where .. " has a multi-line string (`\\\\`), which the comment stripper does not read")
+      elseif c == "{" then
+        braces = braces + 1
+      elseif c == "}" then
+        if braces == 0 and #opened > 0 then
+          braces = pop(opened)
+          inside = "string"
+        else
+          braces = braces - 1
+        end
+      end
+    end
+    i = i + 1
+  end
+  return 0
+end
+
+-- `text`, a module's source, with its comments taken out. `path` names it in
+-- a stop.
+function code_without_comments(text, path)
+  local kept = {}
+  local blank = false
+  local number = 0
+  for line in lines(text) do
+    number = number + 1
+    local at = comment_start(line, path .. ":" .. number)
+    local code = line
+    local was_comment = false
+    if at > 0 then
+      code = trim_end(sub(line, 1, at - 1))
+      was_comment = true
+    end
+    if trim(code) == "" then
+      -- A blank line is kept, once, between code; a comment's line goes.
+      if not was_comment and #kept > 0 then blank = true end
+    else
+      if blank then push(kept, "") end
+      blank = false
+      push(kept, code)
+    end
+  end
+  return join(kept, "\n") .. "\n"
+end
+
+-- `s` as the inside of a Roc string literal on one line.
+function roc_string_body(s)
+  local out = join(split(s, "\\"), "\\\\")
+  out = join(split(out, "\""), "\\\"")
+  out = join(split(out, "$"), "\\$")
+  out = join(split(out, "\t"), "\\t")
+  return join(split(out, "\n"), "\\n")
+end
+
+-- The Lanterns modules the pane may show: every .roc file in the folder but
+-- the generated one, by name.
+function lanterns_module_files()
+  local files = {}
+  for p in glob(LANTERNS_DIR .. "/*.roc") do
+    if basename(p) ~= LANTERNS_SOURCES_NAME then push(files, basename(p)) end
+  end
+  return sort(files)
+end
+
+-- The text of screensavers/lanterns/LanternsSources.roc, as it should be now.
+function lanterns_sources_module()
+  local out = {
+    "## LanternsSources is the Lanterns modules' code, its comments taken out, for",
+    "## the page's code pane. It is generated: tools/bundle_lanterns_sources.shale",
+    "## writes it from the modules, and the gate fails when it is stale. Do not",
+    "## edit it.",
+    "LanternsSources :: [].{",
+    "",
+    "\t## Each module's file name, and its code without its comments.",
+    "\tmodules : List({ file : Str, code : Str })",
+    "\tmodules = [",
+  }
+  for file in lanterns_module_files() do
+    local code = code_without_comments(read(LANTERNS_DIR .. "/" .. file), LANTERNS_DIR .. "/" .. file)
+    push(out, "\t\t{ file: \"" .. file .. "\", code: \"" .. roc_string_body(code) .. "\" },")
+  end
+  push(out, "\t]")
+  push(out, "}")
+  return join(out, "\n") .. "\n"
+end

@@ -29,3 +29,15 @@ function screensavers_listed()
   if #listed == 0 then fail("screensavers/list.txt names no screensaver") end
   return listed
 end
+-- The web platform the screensaver `name`'s web.roc names, as paths from the
+-- repo's root: `main`, its main.roc, and `dir`, its folder, whose scripts
+-- (`*.js`) the page serves beside the runner's. A web.roc that names none, or
+-- one that is not there, stops the run.
+function web_platform_of(name)
+  local root = "screensavers/" .. name .. "/web.roc"
+  local m = re_find(read(root), "platform \"([^\"]+)\"")
+  if m == nil then fail(root .. " names no platform") end
+  local main = path_normal("screensavers/" .. name .. "/" .. m.group)
+  if not exists(main) then fail(root .. "'s platform " .. main .. " is not there") end
+  return {main = main, dir = dirname(main)}
+end

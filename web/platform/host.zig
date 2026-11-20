@@ -123,7 +123,8 @@ fn ensure() void {
 }
 
 /// A reference for a call that keeps nothing: Roc's decrement restores ours.
-fn borrowed() ?[*]u8 {
+/// The Lanterns page's host (web/lanterns_platform/host.zig) borrows it too.
+pub fn borrowed() ?[*]u8 {
     ensure();
     builtins.utils.increfDataPtrC(model, 1, &roc_ops);
     return model;
