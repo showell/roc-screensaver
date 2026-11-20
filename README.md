@@ -5,8 +5,7 @@ screensaver (`.scr`) and a web page.
 
 The code here was written by AI coding agents (Claude), with human supervision. Point an agent at this repo and it can build a new screensaver on the platform.
 
-Even if you don't intend to build a screensaver, this repo may be instructive
-for Roc newcomers. It shows how to write a Roc app that runs on more than one
+Beyond screensavers, it shows how to write a Roc app that runs on more than one
 platform, and its `lib/` has helpers (shapes, brushes, colors, lettering,
 keyboard input) for building things like game engines.
 
@@ -14,18 +13,18 @@ keyboard input) for building things like game engines.
 
 - **A native platform in Zig, the heart of the repo.** The host steps your
   app's model, reads each frame out of Roc's memory, and paints it with its
-  own software rasterizer (`host/raster.zig`). It needs no GPU and no
-  graphics library. On Windows that is a real screensaver, fast enough for
+  own software rasterizer (`host/raster.zig`). It paints on the CPU
+  alone. On Windows that is a real screensaver, fast enough for
   30 frames a second on one thread (see Status). On Linux it writes PNGs.
 - **A web preview of the same app.** A wasm platform and a small JavaScript
   runner paint the same shapes on a canvas, so you see each change in a
-  browser in seconds, long before a Windows machine is involved. The gate
+  browser in seconds, before any Windows build. The gate
   holds the two to the same picture: the page's first frame must match the
   native harness's at the same step.
 
 An app is one Roc value, a `CanvasApp`: a model, a step from one model to the
-next, and the shapes each model looks like. Only the platform changes between
-the two. Keyboard controls belong to the app, in Roc, so they work the same on
+next, and the shapes each model looks like. The two builds differ in the platform
+alone. Keyboard controls belong to the app, in Roc, so they work the same on
 the page and in the Windows window.
 
 ## The screensavers
@@ -74,8 +73,8 @@ A screensaver is a folder in `screensavers/` with two roots over one app:
   `web/platform/`. The skin (`lib/Skin.roc`) dresses the page and only the
   page: whether the "warming up" pill shows, whether the app's keyboard help
   shows under the canvas (made from the `controls` the app declares), and a
-  few links, each opening in a new tab. `WasmApp.program(app)` shows none of
-  them.
+  few links, each opening in a new tab. `WasmApp.program(app)` is the bare
+  page.
 - **`page.html`**, which names the wasm, `<folder>.wasm`.
 - **a line in `screensavers/list.txt`**, the one place that names the
   screensavers: its folder, the checksum of its eighth native frame, its
@@ -91,8 +90,8 @@ and `CanvasApp` to put it together. Copy tides' `main.roc`, `web.roc` and
 `page.html` to start. `zig build -Dapp=<folder>/main.roc` builds another app
 in place of lanterns.
 
-Not every shape reaches Windows yet: the native painter has no `Text`, `Image`
-or `View(World)`, and paints `Blend(Add)` as ordinary blending.
+The native painter draws every shape except `Text`, `Image` and
+`View(World)`, and paints `Blend(Add)` as ordinary blending.
 `native/README.md` says what each shape becomes natively.
 
 ## Building and checking
@@ -116,49 +115,17 @@ runner, runs it headless (its last frame's checksum must match the PNG
 harness's) and uploads the artifact; `gh run download <run-id> -n
 windows-screensaver` fetches it.
 
-## Status (2026-11-15)
+## Status
 
-- **Works:** lanterns builds and runs both ways. The native PNG frames match
-  the page's stills at the same steps, and the Windows build passes on GitHub
-  with the harness's checksum.
-- **Untested:** nobody has yet run the `.scr` on a real Windows machine. Its
-  fullscreen, preview and window modes have only been compiled.
-- **Fast enough for 30 frames a second, on one thread:** `win32.zig`
-  rasterizes every frame at the app's size times `raster.SS`, 1920 by 1200,
-  in every mode, and GDI's HALFTONE stretch fits that to the window, or in
-  `/s` to the monitor's shape, whatever its aspect (a 16:9 monitor squeezes
-  the 16:10 frame). Two workers each rasterize whole frames, alternately.
-  `zig build bench` measures it on Linux (this box: two DigitalOcean vCPUs,
-  ReleaseFast), stepping the whole 1350-step cycle and drawing every sixth
-  step, against 33.3 ms a frame:
-
-  | phase (one thread) | median | p95 | worst |
-  |---|---|---|---|
-  | Roc frame (`roc_frame` and its release) | 1.61 ms | 2.21 ms | 2.87 ms |
-  | Roc step | 0.00 ms | 0.01 ms | 0.03 ms |
-  | words, written and copied into a slot | 0.02 ms | 0.02 ms | 0.07 ms |
-  | raster: the sky and grass, then the sun | 1.52 ms | 1.72 ms | 6.35 ms |
-  | raster: the shapes | 12.8 ms | 17.2 ms | 20.2 ms |
-  | the whole frame | 16.0 ms | 21.0 ms | 24.0 ms |
-
-  No drawn frame is over the budget. That is for this box's own CPU; built
-  for the plain x86-64 the Windows screensaver targets (`-Dcpu=baseline`,
-  no AVX), the whole frame takes 18.3 ms median, 26.3 ms p95 and 31.1 ms at
-  worst, still inside the budget. Of the shapes, `Radial` fills take 69%
-  (28 a frame: the halos, the lamps' and the sun's 300-pixel glow), `Linear`
-  18% (56: the sky, the grass, the cut spans and the translucent flat
-  brushes), `Round` 5% and `Elliptical` 3%. Raster.zig plans each upright
-  polygon's fill (fillPoly's `Plan`): a colour that depends on the row
-  alone (the sky, the grass, a flat brush) is worked out once a run, one
-  that depends on the column alone (a span's halves, a round fill) once a
-  column, and the radial, elliptical and slanted gradients eight pixels at
-  a time in vectors, each with the per-pixel rule's own operations, so the
-  pixels are the same as before (host/raster_test.zig holds them to it).
-  Win32's two-worker pipeline reproduced here gives about 110 frames a
-  second unpaced (84 at the baseline CPU). GDI's stretch to the monitor is
-  not measured. The Windows build is ReleaseFast (`zig build -Dwindows`'s
-  default); Debug rasterized about 3.5 times slower.
-- **No Linux window:** Linux gets the PNG harness only.
+- **Works:** every listed screensaver builds and runs both ways. The native
+  PNG frames match the page's stills at the same steps, and the Windows
+  build passes on GitHub with the harness's checksum.
+- **Next to try:** the `.scr` on a real Windows machine. Its fullscreen,
+  preview and window modes are compiled and wait for that run.
+- **Fast enough for 30 frames a second:** `win32.zig` rasterizes each frame
+  at 1920 by 1200 and GDI's HALFTONE stretch fits it to the window or the
+  monitor. Two workers rasterize whole frames, alternately. `zig build
+  bench` measures each phase of a frame against the 33.3 ms budget.
 
 ## Layout
 
@@ -169,16 +136,15 @@ windows-screensaver` fetches it.
   output (`glue/platform_abi.zig`) by `abi_test.zig`; `screensaver.zig`
   steps and paints; `win32.zig` is the Windows screensaver (`/s`, `/p`, `/c`,
   a window with no arguments, `--headless=N` for CI); `png_main.zig` is the
-  PNG harness. `raster.zig`, `png.zig` and `win32.zig` come from
-  angry-gopher's `games/driving/native/`.
+  PNG harness.
 - `native/`: runs a `CanvasApp` on the native platform, with the adapter
   from shapes to frames (`native/README.md`).
 - `web/`: the wasm platform and its host, and the page's runner and painter
   (`web/README.md`).
 - `lib/`: the vocabulary apps are written in, copied from roc-apps and
   allowed to drift, plus `Skin`.
-- `screensavers/`: the screensavers, a folder each (`lanterns/`,
-  `bubbles/`), and `list.txt`, which names them.
+- `screensavers/`: the screensavers, a folder each, and `list.txt`, which
+  names them.
 - `examples/`: the host tests' fixtures: `basic/` draws every kind of
   `Frame` shape, and `keys/` counts the keys it is given.
 - `tools/`: the gate, the page's build, the glue regenerator, and
