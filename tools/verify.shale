@@ -21,7 +21,7 @@
 --     native/'s (the adapter's and NativeApp's keys) and lib's among them, and
 --     of its page root (web.roc), held to its line's second count, lib's Skin
 --     among them
---   zig fmt --check over build.zig and host/
+--   zig fmt --check over build.zig, host/, web/build.zig and web's platforms
 --   zig build, which builds the default app's archive and the harness
 --   zig build bench-build, the frame-time bench compiled and not run
 --   zig build test, held to exactly `tests_expected` tests
@@ -49,7 +49,10 @@
 --     canvas: the keyboard help made from the app's controls, as its line
 --     says, and the links Home and Code with their addresses, each opening in
 --     a new tab, each line held exactly; and
---     two screenshots 1.5 s apart with no input differ, so the page animates.
+--     two screenshots 1.5 s apart with no input differ, so the page animates;
+--     and a page whose platform has a code pane (code_pane.js) shows it at
+--     step 0 at 1440 by 900, beside the canvas, its first line naming main.roc,
+--     and hides it at 1000 by 700; the others print `code pane: none`.
 --     The shots come 1.3 s after the ride starts, past the indicator's fade
 --     (0.5 s), and web_shots.mjs fails a shot
 --     with the indicator still in it, so the two cannot differ by it alone
@@ -155,7 +158,11 @@ function page_lines(saver, folder)
   local late = shots .. "/at_02800ms.png"
   local moved = exists(early) and exists(late) and read(early) ~= read(late)
   local skin_dressed = contains(r.out, "skin help: " .. saver.help .. "\n") and contains(r.out, skin_links_expected .. "\n")
-  if r.code ~= 0 or not moved or not skin_dressed then print(r.out) end
+  -- A page whose platform has a code pane shows main.roc at step 0.
+  local pane_expected = "code pane: none"
+  if exists(web_platform_of(saver.name).dir .. "/code_pane.js") then pane_expected = "code pane: # screensavers/" .. saver.name .. "/main.roc" end
+  local pane_right = contains(r.out, pane_expected .. "\n")
+  if r.code ~= 0 or not moved or not skin_dressed or not pane_right then print(r.out) end
   local seen = "the two shots are the same"
   if moved then seen = "the shots 1.5 s apart differ" end
   local warm_said = re_find(r.out, "warm-up: [^\n]*")
@@ -167,7 +174,12 @@ function page_lines(saver, folder)
   else
     seen = seen .. "; the skin's help or links are not as web.roc says"
   end
-  line("live page " .. saver.name, r.code == 0 and moved and skin_dressed, seen, r.ms)
+  if pane_right then
+    seen = seen .. "; " .. pane_expected
+  else
+    seen = seen .. "; not " .. pane_expected
+  end
+  line("live page " .. saver.name, r.code == 0 and moved and skin_dressed and pane_right, seen, r.ms)
 end
 
 const savers = screensavers_listed()
@@ -207,9 +219,9 @@ for saver in savers do
   roc_test_line("screensavers/" .. saver.name .. "/web.roc", saver.web_tests)
 end
 
-r = run({"zig", "fmt", "--check", "build.zig", "host"}, {timeout_ms = 30000, tail = 20})
+r = run({"zig", "fmt", "--check", "build.zig", "host", "web/build.zig", "web/platform", "web/lanterns_platform"}, {timeout_ms = 30000, tail = 20})
 if r.code ~= 0 then print(r.out) end
-line("zig fmt --check", r.code == 0, #glob("host/**/*.zig") + 1 .. " files", r.ms)
+line("zig fmt --check", r.code == 0, #glob("host/**/*.zig") + #glob("web/*platform/*.zig") + 2 .. " files", r.ms)
 
 r = run({"zig", "build"}, {timeout_ms = 300000, tail = 40})
 if r.code ~= 0 then print(r.out) end

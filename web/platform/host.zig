@@ -206,4 +206,3 @@ pub export fn computeDressing() u32 {
     if (dressing_box == null) dressing_box = roc_dressing();
     return @intCast(@intFromPtr(&dressing_box));
 }
-

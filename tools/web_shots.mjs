@@ -7,7 +7,11 @@
 // loaded with `?hold=1`, so its start waits at each edge of the warm-up until
 // this has looked there, and a short warm-up is never missed.
 // It prints what the page's skin put under the canvas, the keyboard help and
-// the links, for the gate to hold to the skin.
+// the links, for the gate to hold to the skin. A page with a code pane
+// (Lanterns', web/lanterns_platform/code_pane.js) is loaded at step 0 at
+// 1440 by 900, where the pane must stand beside the canvas, as tall as it,
+// showing a module, and at 1000 by 700, where it must be hidden; it prints the
+// pane's first line, or `code pane: none` for a page without one.
 // The runner's own console lines (`?timing=1`) are printed as they come.
 //
 //   node tools/web_shots.mjs <page url> <shots folder> <ms after the ride starts>...
@@ -190,6 +194,37 @@ const SKIN_SEEN = `(() => {
   return { help: help ? help.textContent : null, links };
 })()`;
 
+// The code pane at step 0, once its code is in: whether it is shown, whether
+// it stands right of the canvas and as tall, and its code's first line.
+const PANE_SEEN = `(async () => {
+  if (!window.SHOW.pane) return { none: true };
+  const started = performance.now();
+  let pre = null;
+  while (performance.now() - started < 5000) {
+    pre = document.querySelector('#code-pane pre');
+    if (pre && pre.textContent !== '') break;
+    await new Promise((later) => setTimeout(later, 20));
+  }
+  const pane = document.getElementById('code-pane');
+  if (!pane || !pre || pre.textContent === '') return { empty: true };
+  const box = pane.getBoundingClientRect();
+  const canvas = document.querySelector('canvas').getBoundingClientRect();
+  return {
+    shown: getComputedStyle(pane).display !== 'none' && box.width > 0,
+    beside: box.left >= canvas.right && Math.abs(box.height - canvas.height) < 2 && Math.abs(box.top - canvas.top) < 2,
+    first: pre.textContent.split('\\n')[0],
+  };
+})()`;
+
+// Loads the page at step 0 at `width` by `height` and answers PANE_SEEN's.
+async function paneAt(page, link, width, height) {
+  await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false }, page.session);
+  const loaded = new Promise((done) => link.on("Page.loadEventFired", done));
+  await page.send("Page.navigate", { url: atStep(0) }, page.session);
+  await loaded;
+  return evaluate(page, PANE_SEEN);
+}
+
 async function evaluate(page, expression) {
   const { result, exceptionDetails } = await page.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, page.session);
   if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
@@ -301,6 +336,20 @@ try {
     const same = expected === rideFrame.hash;
     console.log(`ride: its first frame, after ${rideFrame.steps} steps, is ${same ? "" : "not "}the still page's at that step`);
     if (!same) failures.push(`the ride's first frame, after ${rideFrame.steps} steps, is not ?step=${rideFrame.steps}'s`);
+  }
+  // The code pane, wide and narrow, for a page that has one.
+  const wide = await paneAt(page, link, 1440, 900);
+  if (wide.none) {
+    console.log("code pane: none");
+  } else if (wide.empty) {
+    failures.push("the code pane showed no code at 1440 by 900");
+  } else {
+    const { data } = await page.send("Page.captureScreenshot", { format: "png" }, page.session);
+    writeFileSync(join(shots, "pane_1440x900.png"), Buffer.from(data, "base64"));
+    const narrow = await paneAt(page, link, 1000, 700);
+    console.log(`code pane: ${wide.first}`);
+    if (!wide.shown || !wide.beside) failures.push("the code pane is not beside the canvas, as tall as it, at 1440 by 900");
+    if (narrow.shown) failures.push("the code pane shows at 1000 by 700, below its breakpoint");
   }
   for (const failure of failures) console.log(`FAIL ${failure}`);
   exitCode = failures.length ? 1 : 0;
