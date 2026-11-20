@@ -3,6 +3,8 @@
 A Roc platform, written in Zig, that turns one Roc app into both a Windows
 screensaver (`.scr`) and a web page.
 
+The code here was written by AI coding agents (Claude), with human supervision. Point an agent at this repo and it can build a new screensaver on the platform.
+
 Even if you don't intend to build a screensaver, this repo may be instructive
 for Roc newcomers. It shows how to write a Roc app that runs on more than one
 platform, and its `lib/` has helpers (shapes, brushes, colors, lettering,
