@@ -49,11 +49,25 @@ CodeCues :: [].{
 	## The module the pane shows `steps` into the cycle: the last cue's at or
 	## before it.
 	file_at : U64 -> Str
-	file_at = |steps|
-		match CodeCues.cues.find_last(|cue| cue.step <= steps) {
-			Ok(cue) => cue.file
-			Err(NotFound) => crash "CodeCues.file_at: no cue at step 0, so step ${steps.to_str()} has no module"
-		}
+	file_at = |steps| CodeCues.showing_at(steps).file
+
+	## The module the pane shows `steps` into the cycle, the step it came in at,
+	## and the step the next one comes in at: the next cue's, or the rewind's
+	## for the last.
+	showing_at : U64 -> { file : Str, from : U64, until : U64 }
+	showing_at = |steps| {
+		cue =
+			match CodeCues.cues.find_last(|each| each.step <= steps) {
+				Ok(found) => found
+				Err(NotFound) => crash "CodeCues.showing_at: no cue at step 0, so step ${steps.to_str()} has no module"
+			}
+		until =
+			match CodeCues.cues.find_first(|each| each.step > steps) {
+				Ok(next) => next.step
+				Err(NotFound) => SceneCycle.cycle_steps
+			}
+		{ file: cue.file, from: cue.step, until }
+	}
 
 	## The code of the Lanterns module `file`, its comments taken out.
 	code_of : Str -> Str
@@ -104,6 +118,8 @@ expect CodeCues.file_at(JetFlyBy.enters_step) == "JetFlyBy.roc" and CodeCues.fil
 # A module stays until the next cue.
 expect CodeCues.file_at(0) == "main.roc" and CodeCues.file_at(49) == "main.roc" and CodeCues.file_at(50) == "LanternsApp.roc"
 expect CodeCues.file_at(SceneCycle.cycle_steps - 1) == "JetFlyBy.roc"
+expect CodeCues.showing_at(60) == { file: "LanternsApp.roc", from: 50, until: 96 }
+expect CodeCues.showing_at(1300) == { file: "JetFlyBy.roc", from: 1276, until: SceneCycle.cycle_steps }
 
 # A bundled module's code is its own, comments and all taken out.
 expect CodeCues.code_of("main.roc").contains("program = NativeApp.program(LanternsApp.canvas_app)")

@@ -11,7 +11,7 @@
 // (Lanterns', web/lanterns_platform/code_pane.js) is loaded at step 0 at
 // 1440 by 900, where the pane must stand beside the canvas, as tall as it,
 // showing a module, and at 1000 by 700, where it must be hidden; it prints the
-// pane's first line, or `code pane: none` for a page without one.
+// file the pane's strip names, or `code pane: none` for a page without one.
 // The runner's own console lines (`?timing=1`) are printed as they come.
 //
 //   node tools/web_shots.mjs <page url> <shots folder> <ms after the ride starts>...
@@ -195,7 +195,7 @@ const SKIN_SEEN = `(() => {
 })()`;
 
 // The code pane at step 0, once its code is in: whether it is shown, whether
-// it stands right of the canvas and as tall, and its code's first line.
+// it stands right of the canvas and as tall, and the file its strip names.
 const PANE_SEEN = `(async () => {
   if (!window.SHOW.pane) return { none: true };
   const started = performance.now();
@@ -212,7 +212,7 @@ const PANE_SEEN = `(async () => {
   return {
     shown: getComputedStyle(pane).display !== 'none' && box.width > 0,
     beside: box.left >= canvas.right && Math.abs(box.height - canvas.height) < 2 && Math.abs(box.top - canvas.top) < 2,
-    first: pre.textContent.split('\\n')[0],
+    first: document.getElementById('code-file').textContent,
   };
 })()`;
 

@@ -8,8 +8,9 @@ the painter began as roc-apps' copies and evolve here on their own.
 
 `lanterns_platform/` is Lanterns' own platform, for its code pane: the
 canvas apps' platform with one function more, `code`, which answers after each
-step `ModuleSource(html)`, a module's code coloured as HTML, or
-`KeepCurrentCode`. Its host is the shared host (as the `canvas_host` module)
+step `ModuleSource({ file, html, top_line, pane_lines })`, a new module with
+its code coloured as HTML, or `ScrollTo(top_line)`, the line now at the pane's
+top. Its host is the shared host (as the `canvas_host` module)
 with one export more, `computeCode`, and `code_pane.js` lays the pane beside
 the canvas and scrolls it. A web root names its platform, and the page's build
 glues against that one and serves its scripts. The runner knows nothing of the
@@ -24,10 +25,14 @@ window's height, and as wide as the pane leaves room for), and the code on the
 right, `clamp(360px, 32vw, 600px)` wide and as tall as the scene. Below
 1100 pixels the pane is hidden and the canvas lays out as it always did.
 
-A new module starts at its top, holds still for 1.5 s, then scrolls down at
-24 pixels a second until its end is in view. The Roc decides which module and
-when (`screensavers/lanterns/CodeCues.roc`, a cue a line); the scroll is the
-page's.
+A strip at the pane's top names the module's file, lit for a moment as each
+one arrives. The Roc decides which module and when
+(`screensavers/lanterns/CodeCues.roc`, a cue a line), and the scroll too, in
+lines (`CodePane.roc`): a module holds at its top for up to 20 steps, then
+scrolls at an even pace to show its last line at the pane's foot on the step
+before the next comes in. The page sizes its lines so that `pane_lines` (32)
+fill the code's area, and turns lines into pixels by that height. A pause
+holds the scroll, since the Roc's model holds.
 
 ## The start
 

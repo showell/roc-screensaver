@@ -51,7 +51,7 @@
 --     a new tab, each line held exactly; and
 --     two screenshots 1.5 s apart with no input differ, so the page animates;
 --     and a page whose platform has a code pane (code_pane.js) shows it at
---     step 0 at 1440 by 900, beside the canvas, its first line naming main.roc,
+--     step 0 at 1440 by 900, beside the canvas, its strip naming main.roc,
 --     and hides it at 1000 by 700; the others print `code pane: none`.
 --     The shots come 1.3 s after the ride starts, past the indicator's fade
 --     (0.5 s), and web_shots.mjs fails a shot
@@ -160,7 +160,7 @@ function page_lines(saver, folder)
   local skin_dressed = contains(r.out, "skin help: " .. saver.help .. "\n") and contains(r.out, skin_links_expected .. "\n")
   -- A page whose platform has a code pane shows main.roc at step 0.
   local pane_expected = "code pane: none"
-  if exists(web_platform_of(saver.name).dir .. "/code_pane.js") then pane_expected = "code pane: # screensavers/" .. saver.name .. "/main.roc" end
+  if exists(web_platform_of(saver.name).dir .. "/code_pane.js") then pane_expected = "code pane: screensavers/" .. saver.name .. "/main.roc" end
   local pane_right = contains(r.out, pane_expected .. "\n")
   if r.code ~= 0 or not moved or not skin_dressed or not pane_right then print(r.out) end
   local seen = "the two shots are the same"

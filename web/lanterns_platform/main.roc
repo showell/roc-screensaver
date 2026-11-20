@@ -23,7 +23,7 @@ platform ""
 			height : {} -> U32,
 			fps : {} -> U32,
 			dressing : {} -> Box(Skin.Dressing),
-			code : Box(model) -> Box([ModuleSource(Str), KeepCurrentCode]),
+			code : Box(model) -> Box([ModuleSource({ file : Str, html : Str, top_line : F32, pane_lines : U32 }), ScrollTo(F32)]),
 		}
 	}
 	exposes []
@@ -83,5 +83,5 @@ code_for_host = program.code
 
 # The host hands the last answer back and Roc drops it, since dropping a
 # string is Roc's to do, as `release` is for a frame.
-release_code_for_host : Box([ModuleSource(Str), KeepCurrentCode]) -> {}
+release_code_for_host : Box([ModuleSource({ file : Str, html : Str, top_line : F32, pane_lines : U32 }), ScrollTo(F32)]) -> {}
 release_code_for_host = |_code| {}
