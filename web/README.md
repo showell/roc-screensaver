@@ -8,9 +8,9 @@ the painter began as roc-apps' copies and evolve here on their own.
 
 `lanterns_platform/` is Lanterns' own platform, for its code pane: the
 canvas apps' platform with one function more, `code`, which answers after each
-step `ModuleSource({ file, html, top_line, pane_lines })`, a new module with
-its code coloured as HTML, or `ScrollTo(top_line)`, the line now at the pane's
-top. Its host is the shared host (as the `canvas_host` module)
+step `ModuleSource({ file, html, top_line, pane_lines, page })`, a new module
+with its code coloured as HTML on a `Dark` or `Light` page, or
+`ScrollTo(top_line)`, the line now at the pane's top. Its host is the shared host (as the `canvas_host` module)
 with one export more, `computeCode`, and `code_pane.js` lays the pane beside
 the canvas and scrolls it. A web root names its platform, and the page's build
 glues against that one and serves its scripts. The runner knows nothing of the
@@ -30,9 +30,16 @@ one arrives. The Roc decides which module and when
 (`screensavers/lanterns/CodeCues.roc`, a cue a line), and the scroll too, in
 lines (`CodePane.roc`): a module holds at its top for up to 20 steps, then
 scrolls at an even pace to show its last line at the pane's foot on the step
-before the next comes in. The page sizes its lines so that `pane_lines` (32)
-fill the code's area, and turns lines into pixels by that height. A pause
-holds the scroll, since the Roc's model holds.
+before the next comes in. A scroll slower than a line in 16 steps (a module
+a line or two longer than the pane) moves a whole line at a time instead,
+since one that crept under a pixel a step flickered between sharp and
+blurred. The page sizes its lines so that `pane_lines` (32) fill the code's
+area, and turns lines into pixels by that height. A pause holds the scroll,
+since the Roc's model holds.
+
+Each cue names its page too: dark through the night and the sunrise, light
+(a white page, GitHub's light colours for the code) from `LampShapes.roc`,
+as the lamps fade, to the rewind, which is dark again at dawn.
 
 ## The start
 

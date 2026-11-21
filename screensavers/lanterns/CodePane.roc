@@ -36,9 +36,10 @@ CodePane :: [].{
 	## What the pane does after a step: show a new module, or scroll the one it
 	## shows so that the line `ScrollTo` names is at its top. A module comes
 	## with its file's name, its code as coloured HTML, the line to start at,
-	## and how many lines the pane shows at once, which the page sizes its
-	## lines to, so the scroll ends with the last line at the pane's foot.
-	Code : [ModuleSource({ file : Str, html : Str, top_line : F32, pane_lines : U32 }), ScrollTo(F32)]
+	## how many lines the pane shows at once, which the page sizes its lines
+	## to, so the scroll ends with the last line at the pane's foot, and the
+	## page it is on, dark or light (CodeCues says which).
+	Code : [ModuleSource({ file : Str, html : Str, top_line : F32, pane_lines : U32, page : CodeCues.Page }), ScrollTo(F32)]
 
 	## How many lines of code the pane shows at once.
 	pane_lines : U32
@@ -103,9 +104,10 @@ CodePane :: [].{
 	## What the pane does after the step that made `model`.
 	code : CodePane.Model -> CodePane.Code
 	code = |model| {
-		top_line = top_line_at({ steps: model.lanterns.scene.steps, lines: model.lines })
+		steps = model.lanterns.scene.steps
+		top_line = top_line_at({ steps, lines: model.lines })
 		match model.news {
-			NewModule => ModuleSource({ file: model.file, html: SyntaxColor.html(SyntaxColor.roc, CodeCues.code_of(model.file)), top_line, pane_lines: CodePane.pane_lines })
+			NewModule => ModuleSource({ file: model.file, html: SyntaxColor.html(SyntaxColor.roc, CodeCues.code_of(model.file)), top_line, pane_lines: CodePane.pane_lines, page: CodeCues.showing_at(steps).page })
 			SameModule => ScrollTo(top_line)
 		}
 	}
@@ -202,7 +204,7 @@ expect {
 	first = CodePane.canvas_app.init
 	stepped = CodePane.model_at_next_step(first, Input.none, 0.0)
 	first.file == "main.roc" and first.lines == 12
-		and CodePane.code(first) == ModuleSource({ file: "main.roc", html: SyntaxColor.html(SyntaxColor.roc, CodeCues.code_of("main.roc")), top_line: 0.0, pane_lines: 32 })
+		and CodePane.code(first) == ModuleSource({ file: "main.roc", html: SyntaxColor.html(SyntaxColor.roc, CodeCues.code_of("main.roc")), top_line: 0.0, pane_lines: 32, page: Dark })
 		and stepped.lanterns == lanterns_step(first.lanterns, Input.none, 0.0)
 		and stepped.file == "main.roc" and CodePane.code(stepped) == ScrollTo(0.0)
 }
@@ -306,6 +308,24 @@ expect {
 		)
 }
 
+# The page a module comes in on: R from a light page brings main.roc in on a
+# dark one, and a skip into the day brings its module in on a light one.
+page_of : CodePane.Model -> [Arrived(CodeCues.Page), NoArrival]
+page_of = |model|
+	match CodePane.code(model) {
+		ModuleSource(arrival) => Arrived(arrival.page)
+		ScrollTo(_) => NoArrival
+	}
+
+expect {
+	day = played(1100)
+	restarted = CodePane.model_at_next_step(day, Input.none.with_key_pressed(KeyR), 0.0)
+	into_day = CodePane.model_at_next_step(played(870), Input.none.with_key_pressed(KeyRight), 0.0)
+	past_rewind = CodePane.model_at_next_step(played(1300), Input.none.with_key_pressed(KeyRight), 0.0)
+	day.file == "Bird.roc" and page_of(restarted) == Arrived(Dark)
+		and into_day.file == "LampShapes.roc" and page_of(into_day) == Arrived(Light)
+		and page_of(past_rewind) == Arrived(Dark)
+}
 # Every bundled module's comments were taken out, as Roc's own lexer reads
 # them: roc-syntax-color finds no comment in its code.
 expect LanternsSources.modules.all(|bundled| !SyntaxColor.spans(SyntaxColor.roc, bundled.code).any(|span| span.class == Comment))

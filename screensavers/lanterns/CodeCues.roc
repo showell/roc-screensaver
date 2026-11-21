@@ -14,36 +14,41 @@ import SceneCycle
 
 CodeCues :: [].{
 
-	## One line of the script: from `step` into the cycle, the pane shows `file`.
-	Cue : { step : U64, file : Str }
+	## One line of the script: from `step` into the cycle, the pane shows `file`,
+	## on a dark page or a light one.
+	Cue : { step : U64, file : Str, page : CodeCues.Page }
+
+	## The pane's page: dark through the night and the sunrise, light once day
+	## has come, from the cue as the lamps fade on to the rewind's dawn.
+	Page : [Dark, Light]
 
 	## The script, a cue a line, in the cycle's order. Each line says its beat.
 	cues : List(CodeCues.Cue)
 	cues = [
 		# Dawn: the app's root, as the cycle starts.
-		{ step: 0, file: "main.roc" },
+		{ step: 0, file: "main.roc", page: Dark },
 		# The bird is on its first crossing: the app, its model, keys and frame.
-		{ step: 50, file: "LanternsApp.roc" },
+		{ step: 50, file: "LanternsApp.roc", page: Dark },
 		# The bird takes off on its second crossing.
-		{ step: 96, file: "BirdFlight.roc" },
+		{ step: 96, file: "BirdFlight.roc", page: Dark },
 		# The sun first peeks over the mountain.
-		{ step: 199, file: "Sunrise.roc" },
+		{ step: 199, file: "Sunrise.roc", page: Dark },
 		# The bird takes off on its fifth crossing, between the lamps.
-		{ step: 294, file: "RoadLamps.roc" },
+		{ step: 294, file: "RoadLamps.roc", page: Dark },
 		# The banner plane flies in from the left.
-		{ step: 400, file: "BannerPlane.roc" },
+		{ step: 400, file: "BannerPlane.roc", page: Dark },
 		# The bird takes off on its tenth crossing, the camera following.
-		{ step: 624, file: "RoadCamera.roc" },
+		{ step: 624, file: "RoadCamera.roc", page: Dark },
 		# The sun climbs clear of the mountain.
-		{ step: 765, file: "BackdropShapes.roc" },
-		# The bird takes off on its fourteenth crossing, the lamps fading.
-		{ step: 888, file: "LampShapes.roc" },
+		{ step: 765, file: "BackdropShapes.roc", page: Dark },
+		# The bird takes off on its fourteenth crossing, the lamps fading: day.
+		{ step: 888, file: "LampShapes.roc", page: Light },
 		# The bird takes off on its sixteenth crossing.
-		{ step: 1020, file: "Bird.roc" },
+		{ step: 1020, file: "Bird.roc", page: Light },
 		# The banner is gone, and the cycle nears its end.
-		{ step: 1174, file: "SceneCycle.roc" },
+		{ step: 1174, file: "SceneCycle.roc", page: Light },
 		# The jets fly over.
-		{ step: 1276, file: "JetFlyBy.roc" },
+		{ step: 1276, file: "JetFlyBy.roc", page: Light },
 	]
 
 	## The module the pane shows `steps` into the cycle: the last cue's at or
@@ -51,10 +56,10 @@ CodeCues :: [].{
 	file_at : U64 -> Str
 	file_at = |steps| CodeCues.showing_at(steps).file
 
-	## The module the pane shows `steps` into the cycle, the step it came in at,
-	## and the step the next one comes in at: the next cue's, or the rewind's
-	## for the last.
-	showing_at : U64 -> { file : Str, from : U64, until : U64 }
+	## The module the pane shows `steps` into the cycle, the page it is on, the
+	## step it came in at, and the step the next one comes in at: the next
+	## cue's, or the rewind's for the last.
+	showing_at : U64 -> { file : Str, page : CodeCues.Page, from : U64, until : U64 }
 	showing_at = |steps| {
 		cue =
 			match CodeCues.cues.find_last(|each| each.step <= steps) {
@@ -66,7 +71,7 @@ CodeCues :: [].{
 				Ok(next) => next.step
 				Err(NotFound) => SceneCycle.cycle_steps
 			}
-		{ file: cue.file, from: cue.step, until }
+		{ file: cue.file, page: cue.page, from: cue.step, until }
 	}
 
 	## The code of the Lanterns module `file`, its comments taken out.
@@ -118,8 +123,13 @@ expect CodeCues.file_at(JetFlyBy.enters_step) == "JetFlyBy.roc" and CodeCues.fil
 # A module stays until the next cue.
 expect CodeCues.file_at(0) == "main.roc" and CodeCues.file_at(49) == "main.roc" and CodeCues.file_at(50) == "LanternsApp.roc"
 expect CodeCues.file_at(SceneCycle.cycle_steps - 1) == "JetFlyBy.roc"
-expect CodeCues.showing_at(60) == { file: "LanternsApp.roc", from: 50, until: 96 }
-expect CodeCues.showing_at(1300) == { file: "JetFlyBy.roc", from: 1276, until: SceneCycle.cycle_steps }
+expect CodeCues.showing_at(60) == { file: "LanternsApp.roc", page: Dark, from: 50, until: 96 }
+expect CodeCues.showing_at(1300) == { file: "JetFlyBy.roc", page: Light, from: 1276, until: SceneCycle.cycle_steps }
+
+# The page turns light with LampShapes.roc, as the lamps fade, stays light to
+# the rewind, and is dark again at dawn.
+expect CodeCues.cues.keep_if(|cue| cue.page == Light).map(|cue| cue.file) == ["LampShapes.roc", "Bird.roc", "SceneCycle.roc", "JetFlyBy.roc"]
+expect CodeCues.showing_at(887).page == Dark and CodeCues.showing_at(888).page == Light and CodeCues.showing_at(SceneCycle.cycle_steps - 1).page == Light and CodeCues.showing_at(0).page == Dark
 
 # A bundled module's code is its own, comments and all taken out.
 expect CodeCues.code_of("main.roc").contains("program = NativeApp.program(LanternsApp.canvas_app)")

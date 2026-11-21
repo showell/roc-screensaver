@@ -77,7 +77,9 @@ page alone: after each step it answers `ModuleSource` when the step brought a
 new module in (a cue, R, →, the rewind) and `ScrollTo` otherwise, the line at
 the pane's top. Each module scrolls through all of its lines in its time on
 screen, its last line reaching the pane's foot just as the next module comes
-in; Space holds the scroll with the scene. The native build never imports
+in; Space holds the scroll with the scene. The pane is dark through the night
+and turns light, a white page, with `LampShapes.roc`, as the lamps fade, until
+the rewind. The native build never imports
 either.
 
 The code is `LanternsSources.roc`, every module of this folder with its
