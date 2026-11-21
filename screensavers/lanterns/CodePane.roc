@@ -132,10 +132,20 @@ line_count = |code| code.to_utf8().count_if(|byte| byte == '\n')
 hold_steps : U64
 hold_steps = 20
 
+## A scroll slower than a line in this many steps moves in whole lines. The
+## page draws a line about 17 pixels tall at its least, so a slower scroll
+## would creep under a pixel a step, and the browser would show the code sharp
+## at each whole pixel and blurred between them: a flicker. A module a line or
+## two longer than the pane scrolls so slowly (Bird.roc's 33 lines did).
+crawl_steps_a_line : U64
+crawl_steps_a_line = 16
+
 ## The line at the pane's top `steps` into the cycle, for a module of `lines`
 ## lines: the first through the hold, then on at an even pace to the line that
 ## puts its last at the pane's foot, reached on the step before the next
-## module comes in. A module the pane holds whole never scrolls.
+## module comes in. A module the pane holds whole never scrolls, and one that
+## would crawl moves a whole line at a time, each where the even pace passes
+## that line's middle.
 top_line_at : { steps : U64, lines : U64 } -> F32
 top_line_at = |{ steps, lines }| {
 	showing = CodeCues.showing_at(steps)
@@ -153,7 +163,12 @@ top_line_at = |{ steps, lines }| {
 	} else if into + 1 >= span {
 		room.to_f32()
 	} else {
-		room.to_f32() * (into - hold).to_f32() / (span - hold - 1).to_f32()
+		scrolling = span - hold - 1
+		if room * crawl_steps_a_line < scrolling {
+			((2 * room * (into - hold) + scrolling) // (2 * scrolling)).to_f32()
+		} else {
+			room.to_f32() * (into - hold).to_f32() / scrolling.to_f32()
+		}
 	}
 }
 
@@ -242,6 +257,29 @@ expect {
 	halfway = top_line_at({ steps: 512, lines })
 	lines > 100 and halfway > 0.0 and halfway < (lines - 32).to_f32()
 }
+
+# The lines a module of `lines` lines has at the pane's top through the showing
+# that starts at `from`, in turn, each once.
+tops_through : { from : U64, lines : U64 } -> List(F32)
+tops_through = |{ from, lines }| {
+	showing = CodeCues.showing_at(from)
+	var $tops = []
+	for steps in showing.from..<showing.until {
+		now = top_line_at({ steps, lines })
+		$tops = if $tops.last() == Ok(now) {
+			$tops
+		} else {
+			$tops.append(now)
+		}
+	}
+	$tops
+}
+
+# A module a line or two longer than the pane moves a whole line at a time,
+# never creeping between, in any module's time on screen: Bird.roc, a line
+# longer, shows its first line at the top, then its second, and nothing else.
+expect line_count(CodeCues.code_of("Bird.roc")) == 33 and tops_through({ from: 1020, lines: 33 }) == [0.0, 1.0]
+expect CodeCues.cues.all(|cue| tops_through({ from: cue.step, lines: 33 }) == [0.0, 1.0] and tops_through({ from: cue.step, lines: 34 }) == [0.0, 1.0, 2.0])
 
 # R brings main.roc back from mid-cycle at its top; Space holds the module and
 # its scroll; a skip brings in the module of the step it lands on, scrolled as
