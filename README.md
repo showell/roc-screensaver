@@ -49,6 +49,12 @@ Each one has its own folder in `screensavers/` and its own README.
 Tides and Bubbles are each one or two small modules, and a good place to start
 reading.
 
+The web pages reach roc.lynrummy.com through roc-apps: its
+`site/publish_screensavers.shale` builds each page from a commit here into
+its staging, and its `site/deploy.sh` takes staging to prod. roc-apps'
+[docs/production.md](https://github.com/showell/roc-apps/blob/master/docs/production.md)
+maps how lynrummy.com and its subdomains are served.
+
 **On Windows:** open the newest successful run of the
 [Windows screensaver workflow](https://github.com/showell/roc-screensaver/actions/workflows/windows.yml),
 and download its `windows-screensaver` artifact, a zip (you need to be
