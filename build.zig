@@ -176,7 +176,9 @@ fn rocCompiler(b: *std.Build) []const u8 {
     var code: u8 = undefined;
     const said = b.runAllowFail(&.{ roc, "version" }, &code, .ignore) catch |e|
         std.process.fatal("the Roc: `{s} version` did not run ({t}); install the pin {s} there", .{ roc, e, roc_pin });
-    if (std.mem.indexOf(u8, said, roc_pin) == null)
+    const version_line = std.mem.trim(u8, said, " \r\n");
+    const version = if (std.mem.lastIndexOfScalar(u8, version_line, ' ')) |i| version_line[i + 1 ..] else version_line;
+    if (!std.mem.eql(u8, version, roc_pin))
         std.process.fatal("the Roc: {s} is not the pin {s} (roc-version); it says: {s}", .{ roc, roc_pin, std.mem.trim(u8, said, " \n") });
     return roc;
 }

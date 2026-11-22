@@ -68,8 +68,11 @@ if not exists("platform/main.roc") then
   fail("verify: run it from roc-screensaver's root (no platform/main.roc here)")
 end
 
+-- The pinned compiler, refused unless its `roc version` is exactly the pin.
 const pin = trim(read("roc-version"))
 const roc = real("tools:roc-" .. pin .. "/roc")
+local roc_said = must(run({roc, "version"}, {timeout_ms = 30000, tail = 2}))
+if trim(roc_said.out) ~= "Roc compiler version " .. pin then fail("verify: " .. roc .. " says " .. trim(roc_said.out) .. ", not " .. pin) end
 
 function line(name, ok, detail, ms)
   local verdict = "PASS"

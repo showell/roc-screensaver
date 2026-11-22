@@ -19,6 +19,8 @@ end
 
 const pin = trim(read("roc-version"))
 const roc = real("tools:roc-" .. pin .. "/roc")
+local roc_said = must(run({roc, "version"}, {timeout_ms = 30000, tail = 2}))
+if trim(roc_said.out) ~= "Roc compiler version " .. pin then fail("glue: " .. roc .. " says " .. trim(roc_said.out) .. ", not " .. pin) end
 local parts = split(pin, "-")
 local commit = parts[#parts]
 local spec = "tools:roc-" .. commit .. "/src/glue/src/ZigGlue.roc"
