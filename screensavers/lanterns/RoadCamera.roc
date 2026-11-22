@@ -14,7 +14,7 @@ RoadCamera :: { along : F64, across : F64, height : F64 }.{
 
 	## The camera at `along` and `across` in metres, `camera_height` up.
 	at : { along : F64, across : F64 } -> RoadCamera
-	at = |{ along, across }| RoadCamera.({ along, across, height: camera_height })
+	at = |{ along: along_road, across }| RoadCamera.({ along: along_road, across, height: camera_height })
 
 	## How far along the road the camera stands.
 	along : RoadCamera -> F64
