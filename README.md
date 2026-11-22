@@ -103,7 +103,7 @@ The native painter draws every shape except `Text`, `Image` and
 
 ## Building and checking
 
-You need **Zig 0.17.0** and **the pinned Roc**, the nightly named in
+You need **Zig 0.17.0** and **the pinned Roc**, the release named in
 `roc-version`, at `~/tools/roc-<pin>/roc` (or name it with `-Droc=<path>`).
 `zig build` refuses any other Roc. Lanterns' page also needs
 [roc-syntax-color](https://github.com/showell/roc-syntax-color) checked out

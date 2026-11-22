@@ -6,9 +6,10 @@
 #   gh run download <run-id> -n windows-screensaver
 #
 # The build itself is build.zig's (`zig build -Dwindows`, ReleaseFast); this file only
-# checks the repo out and installs the tools. The Roc is the nightly in
-# roc-version, which build.zig also refuses to build without. The tool steps,
-# with their pinned action SHAs, follow roc-apps' Windows workflow.
+# checks the repo out and installs the tools. The Roc is the release in
+# roc-version, which build.zig also refuses to build without, downloaded from
+# roc-lang/roc's release and held to the sha256 GitHub published for it. The
+# Zig step, with its pinned action SHA, follows roc-apps' Windows workflow.
 name: Windows screensaver
 
 on:
@@ -34,11 +35,20 @@ jobs:
         with:
           version: 0.17.0
 
+      # setup-roc installs nightlies, not a release, on Windows. The sha256 is
+      # the pin's, so a new pin changes it here with roc-version.
       - name: Install Roc
-        uses: roc-lang/setup-roc@cbe782d6f165b89c87d99f50a59ac4f5f73b4427
-        with:
-          version: nightly-new-compiler
-          nightly-tag: ${{ steps.pin.outputs.roc }}
+        env:
+          PIN: ${{ steps.pin.outputs.roc }}
+        run: |
+          test "$PIN" = "0.1.0_RC1"
+          zip="roc-windows_x86_64-$PIN.zip"
+          curl -fsSL -o "$zip" "https://github.com/roc-lang/roc/releases/download/$PIN/$zip"
+          echo "3a91205c33c1df1174808f39b64b2ca919d00147e2828710469f40ce7c206719  $zip" | sha256sum -c -
+          unzip -q "$zip" -d roc-install
+          dir=$(dirname "$(find roc-install -name roc.exe | head -n 1)")
+          "$dir/roc.exe" version | grep -qx "Roc compiler version $PIN"
+          echo "$(cygpath -w "$PWD/$dir")" >> "$GITHUB_PATH"
 
       # Each line of screensavers/list.txt that is not a comment starts with a
       # screensaver's folder and its checksum.
