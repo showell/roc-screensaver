@@ -219,7 +219,7 @@ expect {
 	var $in_view = 0
 	var $touches = 0
 	var $first_in_view = SceneCycle.cycle_steps
-	var $last_in_view = 0
+	var $last_in_view = 0.U64
 	for _step in 0..<SceneCycle.cycle_steps {
 		steps = $model.scene.steps
 		plane_corners = BannerPlane.shapes_at(steps).join_map(|shape| Shapes.region_corners(shape) ?? crash "every part of the plane has corners")
@@ -265,7 +265,7 @@ expect {
 	var $fives = 0
 	var $touches = 0
 	var $first_in_view = SceneCycle.cycle_steps
-	var $last_in_view = 0
+	var $last_in_view = 0.U64
 	for _step in 0..<SceneCycle.cycle_steps {
 		steps = $model.scene.steps
 		jets = JetFlyBy.jets_at(steps)

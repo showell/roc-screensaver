@@ -322,8 +322,8 @@ expect {
 				corners = Shapes.region_corners(body) ?? crash "a jet's outline has corners"
 				xs = corners.map(|p| p.x.to_f64())
 				ys = corners.map(|p| p.y.to_f64())
-				width = xs.fold(-1.0e9, |a, x| a.max(x)) - xs.fold(1.0e9, |a, x| a.min(x))
-				height = ys.fold(-1.0e9, |a, y| a.max(y)) - ys.fold(1.0e9, |a, y| a.min(y))
+				width = xs.fold(-1.0e9.F64, |a, x| a.max(x)) - xs.fold(1.0e9.F64, |a, x| a.min(x))
+				height = ys.fold(-1.0e9.F64, |a, y| a.max(y)) - ys.fold(1.0e9.F64, |a, y| a.min(y))
 				(width * width + height * height).sqrt()
 			},
 		)

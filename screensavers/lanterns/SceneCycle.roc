@@ -123,8 +123,8 @@ expect {
 # way, stays on the screen; and the cycle ends on the first scene again.
 expect {
 	var $scene = SceneCycle.first_scene
-	var $nearest = 1000.0
-	var $farthest = 0.0
+	var $nearest = 1000.0.F64
+	var $farthest = 0.0.F64
 	var $off_screen = 0
 	for _step in 0..<SceneCycle.cycle_steps {
 		{ flight, steps_into_leg, steps } = $scene
