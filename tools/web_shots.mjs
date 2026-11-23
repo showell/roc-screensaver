@@ -23,7 +23,7 @@
 //
 // There is no Playwright package on the box, so this speaks the browser's
 // DevTools protocol over the WebSocket that Node has built in, as roc-apps'
-// canvas_apps/safari/tutorial/book_check.mjs does.
+// tools/chromium.mjs does.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,11 +41,28 @@ mkdirSync(shots, { recursive: true });
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const failures = [];
 
-function startBrowser(profile) {
+// Shale runs every program confined (Landlock), writing only under its
+// mounts, the run's own TMPDIR and build:cache, so everything the browser
+// writes stays in `home`, a folder under TMPDIR: `--disable-dev-shm-usage`
+// puts its shared memory there rather than in /dev/shm (without it the
+// browser dies by SIGTRAP), and HOME (with XDG_CONFIG_HOME its .config) keeps
+// its crash reporter's database out of ~/.config and its certificate store
+// out of ~/.pki. These flags and this
+// environment are copied, on purpose, from roc-apps' tools/chromium.mjs,
+// their shared home, since this is another repository.
+function startBrowser(home) {
+  const profile = join(home, "profile");
+  const config = join(home, "home", ".config");
+  mkdirSync(profile);
+  mkdirSync(config, { recursive: true });
   const browser = spawn(CHROME, [
     "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
-    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--window-size=1000,700", "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"] });
+    "--disable-dev-shm-usage", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
+    "--window-size=1000,700", "about:blank",
+  ], {
+    stdio: ["ignore", "ignore", "pipe"],
+    env: { ...process.env, HOME: join(home, "home"), XDG_CONFIG_HOME: config },
+  });
   const address = new Promise((found, refused) => {
     let said = "";
     browser.stderr.on("data", (chunk) => {
@@ -54,7 +71,7 @@ function startBrowser(profile) {
       if (seen) found(seen[1]);
     });
     browser.on("error", refused);
-    browser.on("exit", (code) => refused(new Error(`chromium exited ${code}: ${said}`)));
+    browser.on("exit", (code, signal) => refused(new Error(`chromium exited ${code ?? signal}: ${said}`)));
   });
   return { browser, address };
 }
